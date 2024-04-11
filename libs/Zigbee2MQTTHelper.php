@@ -27,37 +27,48 @@ trait Zigbee2MQTTHelper
 
     public function RequestAction($ident, $value)
     {
+        $handled = false; // Initialisierung mit false
+
         // Behandle spezielle Fälle separat
         switch ($ident) {
-        case 'Z2M_Color':
-            $this->SendDebug(__FUNCTION__ . ' Color', $value, 0);
-            $this->setColor($value, 'cie');
-            return;
-        case 'Z2M_ColorHS':
-            $this->SendDebug(__FUNCTION__ . ' Color HS', $value, 0);
-            $this->setColor($value, 'hs');
-            return;
-        case 'Z2M_ColorRGB':
-            $this->SendDebug(__FUNCTION__ . ' :: Color RGB', $value, 0);
-            $this->setColor($value, 'cie', 'color_rgb');
-            return;
-        case 'Z2M_ColorTempKelvin':
-            $convertedValue = strval(intval(round(1000000 / $value, 0)));
+            case 'Z2M_Color':
+                $this->SendDebug(__FUNCTION__ . ' Color', $value, 0);
+                $this->setColor($value, 'cie');
+                $handled = true; // Spezialfall wurde behandelt
+                break;
+            case 'Z2M_ColorHS':
+                $this->SendDebug(__FUNCTION__ . ' Color HS', $value, 0);
+                $this->setColor($value, 'hs');
+                $handled = true; // Spezialfall wurde behandelt
+                break;
+            case 'Z2M_ColorRGB':
+                $this->SendDebug(__FUNCTION__ . ' :: Color RGB', $value, 0);
+                $this->setColor($value, 'cie', 'color_rgb');
+                $handled = true; // Spezialfall wurde behandelt
+                break;
+            case 'Z2M_ColorTempKelvin':
+                $convertedValue = strval(intval(round(1000000 / $value, 0)));
+                $payloadKey = $this->convertIdentToPayloadKey($ident);
+                $payload = [$payloadKey => $convertedValue];
+                $payloadJSON = json_encode($payload, JSON_UNESCAPED_SLASHES);
+                $this->Z2MSet($payloadJSON);
+                $handled = true; // Spezialfall wurde behandelt
+                break;
+        }
+
+        // Überprüfen, ob ein spezieller Fall bereits behandelt wurde
+        if (!$handled) {
+            // Generelle Logik für die meisten anderen Fälle
+            $variableID = $this->GetIDForIdent($ident);
+            $variableInfo = IPS_GetVariable($variableID);
+            $variableType = $variableInfo['VariableType'];
             $payloadKey = $this->convertIdentToPayloadKey($ident);
-            $payload = [$payloadKey => $convertedValue];
+            $payload = [$payloadKey => $this->convertStateBasedOnMapping($ident, $value, $variableType)];
             $payloadJSON = json_encode($payload, JSON_UNESCAPED_SLASHES);
             $this->Z2MSet($payloadJSON);
-            return;
         }
-        // Generelle Logik für die meisten anderen Fälle
-        $variableID = $this->GetIDForIdent($ident);
-        $variableInfo = IPS_GetVariable($variableID);
-        $variableType = $variableInfo['VariableType'];
-        $payloadKey = $this->convertIdentToPayloadKey($ident);
-        $payload = [$payloadKey => $this->convertStateBasedOnMapping($ident, $value, $variableType)];
-        $payloadJSON = json_encode($payload, JSON_UNESCAPED_SLASHES);
-        $this->Z2MSet($payloadJSON);
     }
+
 
     public function getDeviceInfo()
     {
@@ -105,1266 +116,206 @@ trait Zigbee2MQTTHelper
             }
 
             $payload = json_decode($Buffer['Payload'], true);
-            if (is_array($payload)) {
-                if (array_key_exists('last_seen', $payload)) {
-                    //Last Seen ist nicht in den Exposes enthalten, deswegen hier.
-                    $this->RegisterVariableInteger('Z2M_LastSeen', $this->Translate('Last Seen'), '~UnixTimestamp');
-                    $this->SetValue('Z2M_LastSeen', ($payload['last_seen'] / 1000));
-                }
-                if (array_key_exists('execute_if_off', $payload)) {
-                    $this->handleStateChange('execute_if_off', 'Z2M_ExecuteIfOff', 'Execute If Off', $payload);
-                }
-                if (array_key_exists('illumination', $payload)) {
-                    $this->SetValue('Z2M_Illumination', $payload['illumination']);
-                }
-                if (array_key_exists('occupancy_sensitivity', $payload)) {
-                    $this->SetValue('Z2M_OccupancySensitivity', $payload['occupancy_sensitivity']);
-                }
-                if (array_key_exists('smoke_alarm_state', $payload)) {
-                    $this->handleStateChange('smoke_alarm_state', 'Z2M_SmokeAlarmState', 'Smoke Alarm State', $payload);
-                }
-                if (array_key_exists('intruder_alarm_state', $payload)) {
-                    $this->handleStateChange('intruder_alarm_state', 'Z2M_IntruderAlarmState', 'Intruder Alarm State', $payload);
-                }
-                if (array_key_exists('voc_index', $payload)) {
-                    $this->SetValue('Z2M_VOCIndex', $payload['voc_index']);
-                }
-                if (array_key_exists('auto_off', $payload)) {
-                    $this->handleStateChange('auto_off', 'Z2M_AutoOff', 'Auto Off', $payload);
-                }
-                if (array_key_exists('schedule_settings', $payload)) {
-                    $this->SetValue('Z2M_ScheduleSettings', $payload['schedule_settings']);
-                }
-                if (array_key_exists('schedule', $payload)) {
-                    $this->handleStateChange('schedule', 'Z2M_Schedule', 'Schedule', $payload);
-                }
-                if (array_key_exists('valve_alarm', $payload)) {
-                    $this->handleStateChange('valve_alarm', 'Z2M_ValveAlarm', 'Valve Alarm', $payload);
-                }
-                if (array_key_exists('setup', $payload)) {
-                    $this->handleStateChange('setup', 'Z2M_Setup', 'Setup', $payload);
-                }
-                if (array_key_exists('calibrated', $payload)) {
-                    $this->handleStateChange('calibrated', 'Z2M_Calibration', 'Calibrated', $payload);
-                }
-                if (array_key_exists('external_temperature_input', $payload)) {
-                    $this->SetValue('Z2M_ExternalTemperatureInput', $payload['external_temperature_input']);
-                }
-                if (array_key_exists('calibrate', $payload)) {
-                    $this->SetValue('Z2M_Calibrate', $payload['calibrate']);
-                }
-                if (array_key_exists('voltage_a', $payload)) {
-                    $this->SetValue('Z2M_VoltageA', $payload['voltage_a']);
-                }
-                if (array_key_exists('voltage_b', $payload)) {
-                    $this->SetValue('Z2M_VoltageB', $payload['voltage_b']);
-                }
-                if (array_key_exists('voltage_c', $payload)) {
-                    $this->SetValue('Z2M_VoltageC', $payload['voltage_c']);
-                }
-                if (array_key_exists('voltage_X', $payload)) {
-                    $this->SetValue('Z2M_VoltageX', $payload['voltage_X']);
-                }
-                if (array_key_exists('voltage_x', $payload)) {
-                    $this->SetValue('Z2M_VoltageX', $payload['voltage_x']);
-                }
-                if (array_key_exists('voltage_Y', $payload)) {
-                    $this->SetValue('Z2M_VoltageY', $payload['voltage_Y']);
-                }
-                if (array_key_exists('voltage_y', $payload)) {
-                    $this->SetValue('Z2M_VoltageX', $payload['voltage_y']);
-                }
-                if (array_key_exists('voltage_Z', $payload)) {
-                    $this->SetValue('Z2M_VoltageZ', $payload['voltage_Z']);
-                }
-                if (array_key_exists('voltage_z', $payload)) {
-                    $this->SetValue('Z2M_VoltageZ', $payload['voltage_X']);
-                }
-                if (array_key_exists('power_a', $payload)) {
-                    $this->SetValue('Z2M_PowerA', $payload['power_a']);
-                }
-                if (array_key_exists('power_b', $payload)) {
-                    $this->SetValue('Z2M_PowerB', $payload['power_b']);
-                }
-                if (array_key_exists('power_c', $payload)) {
-                    $this->SetValue('Z2M_PowerC', $payload['power_c']);
-                }
-                if (array_key_exists('power_X', $payload)) {
-                    $this->SetValue('Z2M_PowerX', $payload['power_X']);
-                }
-                if (array_key_exists('power_y', $payload)) {
-                    $this->SetValue('Z2M_PowerY', $payload['power_y']);
-                }
-                if (array_key_exists('power_Y', $payload)) {
-                    $this->SetValue('Z2M_PowerY', $payload['power_Y']);
-                }
-                if (array_key_exists('power_z', $payload)) {
-                    $this->SetValue('Z2M_PowerZ', $payload['power_z']);
-                }
-                if (array_key_exists('power_Z', $payload)) {
-                    $this->SetValue('Z2M_PowerZ', $payload['power_Z']);
-                }
-                if (array_key_exists('current_a', $payload)) {
-                    $this->SetValue('Z2M_CurrentA', $payload['current_a']);
-                }
-                if (array_key_exists('current_b', $payload)) {
-                    $this->SetValue('Z2M_CurrentB', $payload['current_b']);
-                }
-                if (array_key_exists('current_c', $payload)) {
-                    $this->SetValue('Z2M_CurrentC', $payload['current_c']);
-                }
-                if (array_key_exists('current_X', $payload)) {
-                    $this->SetValue('Z2M_CurrentX', $payload['current_X']);
-                }
-                if (array_key_exists('current_x', $payload)) {
-                    $this->SetValue('Z2M_CurrentX', $payload['current_x']);
-                }
-                if (array_key_exists('current_y', $payload)) {
-                    $this->SetValue('Z2M_CurrentY', $payload['current_y']);
-                }
-                if (array_key_exists('current_Y', $payload)) {
-                    $this->SetValue('Z2M_CurrentY', $payload['current_Y']);
-                }
-                if (array_key_exists('current_z', $payload)) {
-                    $this->SetValue('Z2M_CurrentZ', $payload['current_z']);
-                }
-                if (array_key_exists('current_Z', $payload)) {
-                    $this->SetValue('Z2M_CurrentZ', $payload['current_Z']);
-                }
-                if (array_key_exists('produced_energy', $payload)) {
-                    $this->SetValue('Z2M_ProducedEnergy', $payload['produced_energy']);
-                }
-                if (array_key_exists('temperature_periodic_report', $payload)) {
-                    $this->SetValue('Z2M_TemperaturePeriodicReport', $payload['temperature_periodic_report']);
-                }
-                if (array_key_exists('humidity_periodic_report', $payload)) {
-                    $this->SetValue('Z2M_HumidityPeriodicReport', $payload['humidity_periodic_report']);
-                }
-                if (array_key_exists('temperature_sensitivity', $payload)) {
-                    $this->SetValue('Z2M_TemperatureSensitivity', $payload['temperature_sensitivity']);
-                }
-                if (array_key_exists('humidity_sensitivity', $payload)) {
-                    $this->SetValue('Z2M_HumiditySensitivity', $payload['humidity_sensitivity']);
-                }
-                if (array_key_exists('alarm_ringtone', $payload)) {
-                    $this->SetValue('Z2M_AlarmRingtone', $payload['alarm_ringtone']);
-                }
-                if (array_key_exists('opening_mode', $payload)) {
-                    $this->SetValue('Z2M_OpeningMode', $payload['opening_mode']);
-                }
-                if (array_key_exists('set_upper_limit', $payload)) {
-                    $this->SetValue('Z2M_SetUpperLimit', $payload['set_upper_limit']);
-                }
-                if (array_key_exists('set_bottom_limit', $payload)) {
-                    $this->SetValue('Z2M_SetBottomLimit', $payload['set_bottom_limit']);
-                }
-                if (array_key_exists('temperature_alarm', $payload)) {
-                    $this->SetValue('Z2M_TemperatureAlarm', $payload['temperature_alarm']);
-                }
-                if (array_key_exists('humidity_alarm', $payload)) {
-                    $this->SetValue('Z2M_HumidityAlarm', $payload['humidity_alarm']);
-                }
-                if (array_key_exists('max_temperature_alarm', $payload)) {
-                    $this->SetValue('Z2M_MaxTemperatureAlarm', $payload['max_temperature_alarm']);
-                }
-                if (array_key_exists('min_temperature_alarm', $payload)) {
-                    $this->SetValue('Z2M_MinTemperatureAlarm', $payload['min_temperature_alarm']);
-                }
-                if (array_key_exists('max_humidity_alarm', $payload)) {
-                    $this->SetValue('Z2M_MaxHumidityAlarm', $payload['max_humidity_alarm']);
-                }
-                if (array_key_exists('min_humidity_alarm', $payload)) {
-                    $this->SetValue('Z2M_MinHumidityAlarm', $payload['min_humidity_alarm']);
-                }
-                if (array_key_exists('online', $payload)) {
-                    $this->SetValue('Z2M_Online', $payload['online']);
-                }
-                if (array_key_exists('error_status', $payload)) {
-                    $this->SetValue('Z2M_ErrorStatus', $payload['error_status']);
-                }
-                if (array_key_exists('working_day', $payload)) {
-                    $this->SetValue('Z2M_WorkingDay', $payload['working_day']);
-                }
-                if (array_key_exists('week_day', $payload)) {
-                    $this->SetValue('Z2M_WeekDay', $payload['week_day']);
-                }
-                if (array_key_exists('cycle_irrigation_num_times', $payload)) {
-                    $this->SetValue('Z2M_CycleIrrigationNumTimes', $payload['cycle_irrigation_num_times']);
-                }
-                if (array_key_exists('irrigation_start_time', $payload)) {
-                    $this->SetValue('Z2M_IrrigationStartTime', $payload['irrigation_start_time']);
-                }
-                if (array_key_exists('irrigation_end_time', $payload)) {
-                    $this->SetValue('Z2M_IrrigationEndTime', $payload['irrigation_end_time']);
-                }
-                if (array_key_exists('last_irrigation_duration', $payload)) {
-                    $this->SetValue('Z2M_LastIrrigationDuration', $payload['last_irrigation_duration']);
-                }
-                if (array_key_exists('water_consumed', $payload)) {
-                    $this->SetValue('Z2M_WaterConsumed', $payload['water_consumed']);
-                }
-                if (array_key_exists('irrigation_target', $payload)) {
-                    $this->SetValue('Z2M_IrrigationTarget', $payload['irrigation_target']);
-                }
-                if (array_key_exists('cycle_irrigation_interval', $payload)) {
-                    $this->SetValue('Z2M_CycleIrrigationInterval', $payload['cycle_irrigation_interval']);
-                }
-                if (array_key_exists('countdown_l1', $payload)) {
-                    $this->SetValue('Z2M_CountdownL1', $payload['countdown_l1']);
-                }
-                if (array_key_exists('countdown_l2', $payload)) {
-                    $this->SetValue('Z2M_CountdownL2', $payload['countdown_l2']);
-                }
-                if (array_key_exists('presence_timeout', $payload)) {
-                    $this->SetValue('Z2M_Presence_Timeout', $payload['presence_timeout']);
-                }
-                if (array_key_exists('radar_range', $payload)) {
-                    $this->SetValue('Z2M_RadarRange', $payload['radar_range']);
-                }
-                if (array_key_exists('move_sensitivity', $payload)) {
-                    $this->SetValue('Z2M_MoveSensitivity', $payload['move_sensitivity']);
-                }
-                if (array_key_exists('distance', $payload)) {
-                    $this->SetValue('Z2M_Distance', $payload['distance']);
-                }
-                if (array_key_exists('power_reactive', $payload)) {
-                    $this->SetValue('Z2M_PowerReactive', $payload['power_reactive']);
-                }
-                if (array_key_exists('illuminance_above_threshold', $payload)) {
-                    $this->SetValue('Z2M_IlluminanceAboveThreshold', $payload['illuminance_above_threshold']);
-                }
-                if (array_key_exists('requested_brightness_percent', $payload)) {
-                    $this->SetValue('Z2M_RequestedBrightnessPercent', $payload['requested_brightness_percent']);
-                }
-                if (array_key_exists('requested_brightness_level', $payload)) {
-                    $this->SetValue('Z2M_RequestedBrightnessLevel', $payload['requested_brightness_level']);
-                }
-                if (array_key_exists('x_axis', $payload)) {
-                    $this->SetValue('Z2M_XAxis', $payload['x_axis']);
-                }
-                if (array_key_exists('y_axis', $payload)) {
-                    $this->SetValue('Z2M_YAxis', $payload['y_axis']);
-                }
-                if (array_key_exists('z_axis', $payload)) {
-                    $this->SetValue('Z2M_ZAxis', $payload['z_axis']);
-                }
-                if (array_key_exists('power_factor', $payload)) {
-                    $this->SetValue('Z2M_PowerFactor', $payload['power_factor']);
-                }
-                if (array_key_exists('ac_frequency', $payload)) {
-                    $this->SetValue('Z2M_AcFrequency', $payload['ac_frequency']);
-                }
-                if (array_key_exists('valve_adapt_process', $payload)) {
-                    $this->SetValue('Z2M_ValveAdaptProcess', $payload['valve_adapt_process']);
-                }
-                if (array_key_exists('valve_adapt_status', $payload)) {
-                    $this->SetValue('Z2M_ValveAdaptStatus', $payload['valve_adapt_status']);
-                }
-                if (array_key_exists('indicator', $payload)) {
-                    $this->handleStateChange('indicator', 'Z2M_Indicator', 'Indicator', $payload);
-                }
-                if (array_key_exists('small_detection_sensitivity', $payload)) {
-                    $this->SetValue('Z2M_SmallDetectionSensitivity', $payload['small_detection_sensitivity']);
-                }
-                if (array_key_exists('small_detection_distance', $payload)) {
-                    $this->SetValue('Z2M_SmallDetectionDistance', $payload['small_detection_distance']);
-                }
-                if (array_key_exists('medium_motion_detection_distance', $payload)) {
-                    $this->SetValue('Z2M_MediumMotionDetectionDistance', $payload['medium_motion_detection_distance']);
-                }
-                if (array_key_exists('medium_motion_detection_sensitivity', $payload)) {
-                    $this->SetValue('Z2M_MediumMotionDetectionSensitivity', $payload['medium_motion_detection_sensitivity']);
-                }
-                if (array_key_exists('large_motion_detection_distance', $payload)) {
-                    $this->SetValue('Z2M_LargeMotionDetectionDistance', $payload['large_motion_detection_distance']);
-                }
-                if (array_key_exists('large_motion_detection_sensitivity', $payload)) {
-                    $this->SetValue('Z2M_LargeMotionDetectionSensitivity', $payload['large_motion_detection_sensitivity']);
-                }
-                if (array_key_exists('motion_state', $payload)) {
-                    $this->SetValue('Z2M_MotionState', $payload['motion_state']);
-                }
-                if (array_key_exists('detection_distance', $payload)) {
-                    $this->SetValue('Z2M_DetectionDistance', $payload['detection_distance']);
-                }
-                if (array_key_exists('transmit_power', $payload)) {
-                    $this->SetValue('Z2M_TransmitPower', $payload['transmit_power']);
-                }
-                if (array_key_exists('presence_sensitivity', $payload)) {
-                    $this->SetValue('Z2M_PresenceSensitivity', $payload['presence_sensitivity']);
-                }
-                if (array_key_exists('detection_distance_min', $payload)) {
-                    $this->SetValue('Z2M_DetectionDistanceMin', $payload['detection_distance_min']);
-                }
-                if (array_key_exists('detection_distance_max', $payload)) {
-                    $this->SetValue('Z2M_DetectionDistanceMax', $payload['detection_distance_max']);
-                }
-                if (array_key_exists('presence_state', $payload)) {
-                    $this->SetValue('Z2M_PresenceState', $payload['presence_state']);
-                }
-                if (array_key_exists('self_test_result', $payload)) {
-                    $this->SetValue('Z2M_SelfTestResult', $payload['self_test_result']);
-                }
-                if (array_key_exists('presence_event', $payload)) {
-                    $this->SetValue('Z2M_PresenceEvent', $payload['presence_event']);
-                }
-                if (array_key_exists('action_zone', $payload)) {
-                    $this->SetValue('Z2M_ActionZone', $payload['action_zone']);
-                }
-                if (array_key_exists('device_mode', $payload)) {
-                    $this->SetValue('Z2M_DeviceMode', $payload['device_mode']);
-                }
-                if (array_key_exists('monitoring_mode', $payload)) {
-                    $this->SetValue('Z2M_MonitoringMode', $payload['monitoring_mode']);
-                }
-                if (array_key_exists('approach_distance', $payload)) {
-                    $this->SetValue('Z2M_ApproachDistance', $payload['approach_distance']);
-                }
-                if (array_key_exists('reset_nopresence_status', $payload)) {
-                    $this->SetValue('Z2M_ResetNopresenceStatus', $payload['reset_nopresence_status']);
-                }
-                if (array_key_exists('scale_protection', $payload)) {
-                    $this->handleStateChange('scale_protection', 'Z2M_ScaleProtection', 'Scale Protection', $payload);
-                }
-                if (array_key_exists('led_indication', $payload)) {
-                    $this->handleStateChange('led_indication', 'Z2M_LEDIndication', 'LED Indication', $payload);
-                }
-                if (array_key_exists('silence', $payload)) {
-                    $this->SetValue('Z2M_Silence', $payload['silence']);
-                }
-                if (array_key_exists('learn_ir_code', $payload)) {
-                    $this->handleStateChange('learn_ir_caode', 'Z2M_LearnIRCode', 'Learn IR Code', $payload);
-                }
-                if (array_key_exists('error', $payload)) {
-                    $this->SetValue('Z2M_TRVError', $payload['error']);
-                }
-                if (array_key_exists('learned_ir_code', $payload)) {
-                    $this->SetValue('Z2M_LearnedIRCode', $payload['learned_ir_code']);
-                }
-                if (array_key_exists('fan_mode', $payload)) {
-                    $this->SetValue('Z2M_FanMode', $payload['fan_mode']);
-                }
-                if (array_key_exists('alarm_time', $payload)) {
-                    $this->SetValue('Z2M_AlarmTime', $payload['alarm_time']);
-                }
-                if (array_key_exists('alarm_mode', $payload)) {
-                    $this->SetValue('Z2M_AlarmMode', $payload['alarm_mode']);
-                }
-                if (array_key_exists('charge_state', $payload)) {
-                    $this->handleStateChange('charge_state', 'Z2M_ChargeState', 'Charge State', $payload);
-                }
-                if (array_key_exists('alarm_melody', $payload)) {
-                    $this->SetValue('Z2M_AlarmMelody', $payload['alarm_melody']);
-                }
-                if (array_key_exists('tamper_alarm', $payload)) {
-                    $this->handleStateChange('tamper_alarm', 'Z2M_TamperAlarm', 'Tamper Alarm', $payload);
-                }
-                if (array_key_exists('tamper_alarm_switch', $payload)) {
-                    $this->handleStateChange('tamper_alarm_switch', 'Z2M_TamperAlarmSwitch', 'Tamper Alarm Switch', $payload);
-                }
-                if (array_key_exists('alarm_switch', $payload)) {
-                    $this->handleStateChange('alarm_switch', 'Z2M_AlarmSwitch', 'Alarm Switch', $payload);
-                }
-                if (array_key_exists('alarm_state', $payload)) {
-                    $this->SetValue('Z2M_AlarmState', $payload['alarm_state']);
-                }
-                if (array_key_exists('do_not_disturb', $payload)) {
-                    $this->SetValue('Z2M_DoNotDisturb', $payload['do_not_disturb']);
-                }
-                if (array_key_exists('color_power_on_behavior', $payload)) {
-                    $this->SetValue('Z2M_ColorPowerOnBehavior', $payload['color_power_on_behavior']);
-                }
-                if (array_key_exists('displayed_temperature', $payload)) {
-                    $this->SetValue('Z2M_DisplayedTemperature', $payload['displayed_temperature']);
-                }
-                if (array_key_exists('remote_temperature', $payload)) {
-                    $this->SetValue('Z2M_RemoteTemperature', $payload['remote_temperature']);
-                }
-                if (array_key_exists('co', $payload)) {
-                    $this->SetValue('Z2M_CO', $payload['co']);
-                }
-                if (array_key_exists('battery_state', $payload)) {
-                    $this->SetValue('Z2M_BatteryState', $payload['battery_state']);
-                }
-                if (array_key_exists('temperature_unit', $payload)) {
-                    $this->SetValue('Z2M_TemperatureUnit', $payload['temperature_unit']);
-                }
-                if (array_key_exists('soil_moisture', $payload)) {
-                    $this->SetValue('Z2M_SoilMoisture', $payload['soil_moisture']);
-                }
-                if (array_key_exists('mute', $payload)) {
-                    $this->SetValue('Z2M_Mute', $payload['mute']);
-                }
-                if (array_key_exists('mute_buzzer', $payload)) {
-                    $this->SetValue('Z2M_MuteBuzzer', $payload['mute_buzzer']);
-                }
-                if (array_key_exists('adaptation_run_control', $payload)) {
-                    $this->SetValue('Z2M_AdaptationRunControl', $payload['adaptation_run_control']);
-                }
-                if (array_key_exists('adaptation_run_status', $payload)) {
-                    $this->SetValue('Z2M_AdaptationRunStatus', $payload['adaptation_run_status']);
-                }
-                if (array_key_exists('day_of_week', $payload)) {
-                    $this->SetValue('Z2M_Day_Of_Week', $payload['day_of_week']);
-                }
-                if (array_key_exists('regulation_setpoint_offset', $payload)) {
-                    $this->SetValue('Z2M_RegulationSetpointOffset', $payload['regulation_setpoint_offset']);
-                }
-                if (array_key_exists('load_estimate', $payload)) {
-                    $this->SetValue('Z2M_LoadEstimate', $payload['load_estimate']);
-                }
-                if (array_key_exists('load_room_mean', $payload)) {
-                    $this->SetValue('Z2M_LoadRoomMean', $payload['load_room_mean']);
-                }
-                if (array_key_exists('algorithm_scale_factor', $payload)) {
-                    $this->SetValue('Z2M_AlgorithmScaleFactor', $payload['algorithm_scale_factor']);
-                }
-                if (array_key_exists('trigger_time', $payload)) {
-                    $this->SetValue('Z2M_TriggerTime', $payload['trigger_time']);
-                }
-                if (array_key_exists('window_open_internal', $payload)) {
-                    $this->SetValue('Z2M_WindowOpenInternal', $payload['window_open_internal']);
-                }
-                if (array_key_exists('adaptation_run_settings', $payload)) {
-                    $this->SetValue('Z2M_AdaptationRunSettings', $payload['adaptation_run_settings']);
-                }
-                if (array_key_exists('preheat_status', $payload)) {
-                    $this->SetValue('Z2M_PreheatStatus', $payload['preheat_status']);
-                }
-                if (array_key_exists('load_balancing_enable', $payload)) {
-                    $this->SetValue('Z2M_LoadBalancingEnable', $payload['load_balancing_enable']);
-                }
-                if (array_key_exists('window_open_external', $payload)) {
-                    $this->SetValue('Z2M_WindowOpenExternal', $payload['window_open_external']);
-                }
-                if (array_key_exists('window_open_feature', $payload)) {
-                    $this->SetValue('Z2M_WindowOpenFeature', $payload['window_open_feature']);
-                }
-                if (array_key_exists('radiator_covered', $payload)) {
-                    $this->SetValue('Z2M_RadiatorCovered', $payload['radiator_covered']);
-                }
-                if (array_key_exists('external_measured_room_sensor', $payload)) {
-                    $this->SetValue('Z2M_ExternalMeasuredRoomSensor', $payload['external_measured_room_sensor']);
-                }
-                if (array_key_exists('occupied_heating_setpoint_scheduled', $payload)) {
-                    $this->SetValue('Z2M_OccupiedHeatingSetpointScheduled', $payload['occupied_heating_setpoint_scheduled']);
-                }
-                if (array_key_exists('setpoint_change_source', $payload)) {
-                    $this->SetValue('Z2M_SetpointChangeSource', $payload['setpoint_change_source']);
-                }
-                if (array_key_exists('heat_required', $payload)) {
-                    $this->SetValue('Z2M_HeatRequired', $payload['heat_required']);
-                }
-                if (array_key_exists('heat_available', $payload)) {
-                    $this->SetValue('Z2M_HeatAvailable', $payload['heat_available']);
-                }
-                if (array_key_exists('viewing_direction', $payload)) {
-                    $this->SetValue('Z2M_ViewingDirection', $payload['viewing_direction']);
-                }
-                if (array_key_exists('thermostat_vertical_orientation', $payload)) {
-                    $this->SetValue('Z2M_ThermostatVerticalOrientation', $payload['thermostat_vertical_orientation']);
-                }
-                if (array_key_exists('mounted_mode_control', $payload)) {
-                    $this->SetValue('Z2M_MountedModeControl', $payload['mounted_mode_control']);
-                }
-                if (array_key_exists('programming_operation_mode', $payload)) {
-                    $this->SetValue('Z2M_ProgrammingOperationMode', $payload['programming_operation_mode']);
-                }
-                if (array_key_exists('keypad_lockout', $payload)) {
-                    $this->SetValue('Z2M_KeypadLockout', $payload['keypad_lockout']);
-                }
-                if (array_key_exists('linkage_alarm_state', $payload)) {
-                    $this->SetValue('Z2M_LinkageAlarmState', $payload['linkage_alarm_state']);
-                }
-                if (array_key_exists('linkage_alarm', $payload)) {
-                    $this->SetValue('Z2M_LinkageAlarm', $payload['linkage_alarm']);
-                }
-                if (array_key_exists('heartbeat_indicator', $payload)) {
-                    $this->SetValue('Z2M_HeartbeatIndicator', $payload['heartbeat_indicator']);
-                }
-                if (array_key_exists('buzzer_manual_mute', $payload)) {
-                    $this->SetValue('Z2M_BuzzerManualMute', $payload['buzzer_manual_mute']);
-                }
-                if (array_key_exists('buzzer_manual_alarm', $payload)) {
-                    $this->SetValue('Z2M_BuzzerManualAlarm', $payload['buzzer_manual_alarm']);
-                }
-                if (array_key_exists('buzzer', $payload)) {
-                    $this->SetValue('Z2M_Buzzer', $payload['buzzer']);
-                }
-                if (array_key_exists('smoke_density_dbm', $payload)) {
-                    $this->SetValue('Z2M_SmokeDensitiyDBM', $payload['smoke_density_dbm']);
-                }
-                if (array_key_exists('display_brightness', $payload)) {
-                    $this->SetValue('Z2M_DisplayBrightness', $payload['display_brightness']);
-                }
-                if (array_key_exists('display_ontime', $payload)) {
-                    $this->SetValue('Z2M_DisplayOntime', $payload['display_ontime']);
-                }
-                if (array_key_exists('display_orientation', $payload)) {
-                    $this->SetValue('Z2M_DisplayOrientation', $payload['display_orientation']);
-                }
-                if (array_key_exists('fan_state', $payload)) {
-                    $this->handleStateChange('fan_state', 'Z2M_FanState', 'Fan State', $payload);
-                }
-                if (array_key_exists('boost', $payload)) {
-                    $this->handleStateChange('boost', 'Z2M_Boost', 'Boost', $payload);
-                }
-                if (array_key_exists('boost_heating', $payload)) {
-                    $this->handleStateChange('boost_heating', 'Z2M_BoostHeating', 'Boost Heating', $payload);
-                }
-                if (array_key_exists('boost_heating_countdown_time_set', $payload)) {
-                    $this->SetValue('Z2M_BoostHeatingCountdownTimeSet', $payload['boost_heating_countdown_time_set']);
-                }
-                if (array_key_exists('valve_state', $payload)) {
-                    $this->handleStateChange('valve_state', 'Z2M_ValveState', 'Valve State', $payload, ['OPEN' => true, 'CLOSED' => false]);
-                }
-                if (array_key_exists('eco_mode', $payload)) {
-                    $this->handleStateChange('eco_mode', 'Z2M_EcoMode', 'Eco Mode', $payload);
-                }
-                if (array_key_exists('side', $payload)) {
-                    $this->SetValue('Z2M_Side', $payload['side']);
-                }
-                if (array_key_exists('power_outage_count', $payload)) {
-                    $this->SetValue('Z2M_PowerOutageCount', $payload['power_outage_count']);
-                }
-                if (array_key_exists('switch_type', $payload)) {
-                    $this->SetValue('Z2M_SwitchType', $payload['switch_type']);
-                }
-                if (array_key_exists('indicator_mode', $payload)) {
-                    $this->SetValue('Z2M_IndicatorMode', $payload['indicator_mode']);
-                }
-                if (array_key_exists('temperature_alarm', $payload)) {
-                    $this->SetValue('Z2M_TemperatureAlarm', $payload['temperature_alarm']);
-                }
-                if (array_key_exists('humidity_alarm', $payload)) {
-                    $this->SetValue('Z2M_HumidityAlarm', $payload['humidity_alarm']);
-                }
-                if (array_key_exists('alarm', $payload)) {
-                    $this->SetValue('Z2M_Alarm', $payload['alarm']);
-                }
-                if (array_key_exists('melody', $payload)) {
-                    $this->SetValue('Z2M_Melody', $payload['melody']);
-                }
-                if (array_key_exists('power_type', $payload)) {
-                    $this->SetValue('Z2M_PowerType', $payload['power_type']);
-                }
-                if (array_key_exists('volume', $payload)) {
-                    $this->SetValue('Z2M_Volume', $payload['volume']);
-                }
-                if (array_key_exists('humidity_max', $payload)) {
-                    $this->SetValue('Z2M_HumidityMax', $payload['humidity_max']);
-                }
-                if (array_key_exists('humidity_min', $payload)) {
-                    $this->SetValue('Z2M_HumidityMin', $payload['humidity_min']);
-                }
-                if (array_key_exists('temperature_max', $payload)) {
-                    $this->SetValue('Z2M_TemperatureMax', $payload['temperature_max']);
-                }
-                if (array_key_exists('temperature_min', $payload)) {
-                    $this->SetValue('Z2M_TemperatureMin', $payload['temperature_min']);
-                }
-                if (array_key_exists('backlight_mode', $payload)) {
-                    if (in_array($payload['backlight_mode'], ['ON', 'OFF'])) {
-                        $this->handleStateChange('backlight_mode', 'Z2M_BacklightMode', 'backlight mode', $payload);
-                    } elseif (in_array($payload['backlight_mode'], ['low', 'high'])) {
-                        $this->SetValue('Z2M_BacklightMode', $payload['backlight_mode']);
-                    } else {
-                        $this->SendDebug('backlight mode', 'Undefined State: ' . $payload['backlight_mode'], 0);
+            foreach ($payload as $key => $value) {
+                $ident = 'Z2M_' . implode('', array_map('ucfirst', explode('_', $key)));
+                $variableID = @$this->GetIDForIdent($ident);
+
+                if ($variableID !== false) {
+                    $variableInfo = IPS_GetVariable($variableID);
+                    $variableType = $variableInfo['VariableType'];
+                    $translate = $this->convertKeyToReadableFormat($key);
+                    // Prüfen, ob der aktuelle Schlüssel spezielle Behandlung erfordert
+                    // Spezielle Behandlungen unabhängig vom Typ durchführen
+                    $handled = false; // Flag, um zu markieren, ob eine spezielle Behandlung durchgeführt wurde
+                    switch ($key) {
+                        case 'update_available':
+                            $this->RegisterVariableBoolean('Z2M_Update', $this->Translate('Update'), '');
+                            $this->SetValue('Z2M_Update', $payload['update_available']);
+                            $handled = true;
+                            break;
+                        case 'scene':
+                            $this->LogMessage('Please contact module developer. Undefined variable: scene', KL_WARNING);
+                            //$this->RegisterVariableString('Z2M_Scene', $this->Translate('Scene'), '');
+                            //$this->SetValue('Z2M_Scene', $payload['scene']);
+                            $handled = true;
+                            break;
+
+                        case 'voltage':
+                            if ($payload['voltage'] > 400) { //Es gibt wahrscheinlich keine Zigbee Geräte mit über 400 Volt
+                                $this->SetValue('Z2M_Voltage', $payload['voltage'] / 1000);
+                            } else {
+                                $this->SetValue('Z2M_Voltage', $payload['voltage']);
+                            }
+                            $handled = true;
+                            break;
+                        case 'action_rate':
+                            $this->RegisterVariableInteger('Z2M_ActionRate', $this->Translate('Action Rate'), $ProfileName);
+                            $this->EnableAction('Z2M_ActionRate');
+                            $this->SetValue('Z2M_ActionRate', $payload['action_rate']);
+                            $handled = true;
+                            break;
+                        case 'action_level':
+                            $this->RegisterVariableInteger('Z2M_ActionLevel', $this->Translate('Action Level'), $ProfileName);
+                            $this->EnableAction('Z2M_ActionLevel');
+                            $this->SetValue('Z2M_ActionLevel', $payload['action_level']);
+                            $handled = true;
+                            break;
+                        case 'action_transition_time':
+                            $this->RegisterVariableInteger('Z2M_ActionTransitionTime', $this->Translate('Action Transition Time'), $ProfileName);
+                            $this->EnableAction('Z2M_ActionTransitionTime');
+                            $this->SetValue('Z2M_ActionTransitionTime', $payload['action_transition_time']);
+                            $handled = true;
+                            break;
+                        case 'child_lock':
+                            $this->handleStateChange('child_lock', 'Z2M_ChildLock', 'Child Lock', $payload, ['LOCK' => true, 'UNLOCK' => false]);
+                            $handled = true;
+                            break;
+                        case 'color':
+                            if (is_array($value)) {
+                                if (isset($value['x']) && isset($value['y'])) {
+                                    $this->SendDebug(__FUNCTION__ . ' Color', $value['x'], 0);
+                                    $brightness = isset($value['brightness']) ? $value['brightness'] : 255;
+                                    $RGBColor = ltrim($this->xyToHEX($value['x'], $value['y'], $brightness), '#');
+                                    $this->SendDebug(__FUNCTION__ . ' Color RGB HEX', $RGBColor, 0);
+                                    $this->SetValue($ident, hexdec($RGBColor));
+                                } elseif (isset($value['hue']) && isset($value['saturation'])) {
+                                    $RGBColor = ltrim($this->HSToRGB($value['hue'], $value['saturation'], 255), '#');
+                                    $this->SendDebug(__FUNCTION__ . ' Color RGB HEX', $RGBColor, 0);
+                                    $this->SetValue($ident, hexdec($RGBColor));
+                                }
+                            }
+                            $handled = true;
+                            break;
+                        case 'color_rgb':
+                            if (isset($payload['color_rgb']) && is_array($payload['color_rgb'])) {
+                                $colorRgb = $payload['color_rgb'];
+                                $this->SendDebug(__FUNCTION__ . ':: Color X', $colorRgb['x'], 0);
+                                $this->SendDebug(__FUNCTION__ . ':: Color Y', $colorRgb['y'], 0);
+                                // Bestimmen der Helligkeit, falls vorhanden
+                                $brightnessRgb = isset($payload['brightness_rgb']) ? $payload['brightness_rgb'] : 255;
+                                $RGBColor = ltrim($this->xyToHEX($colorRgb['x'], $colorRgb['y'], $brightnessRgb), '#');
+                                $this->SendDebug(__FUNCTION__ . ' Color :: RGB HEX', $RGBColor, 0);
+                                $this->SetValue('Z2M_ColorRGB', hexdec($RGBColor));
+                            }
+                            $handled = true;
+                            break;
+                        case 'color_temp_cct':
+                            $this->SetValue('Z2M_ColorTempCCT', $payload['color_temp_cct']);
+                            if ($payload['color_temp_cct'] > 0) {
+                                $this->SetValue('Z2M_ColorTempCCTKelvin', 1000000 / $payload['color_temp_cct']); //Convert to Kelvin
+                            }
+                            $handled = true;
+                            break;
+                        case 'color_temp_rgb':
+                            $this->SetValue('Z2M_ColorTempRGB', $payload['color_temp_rgb']);
+                            if ($payload['color_temp_rgb'] > 0) {
+                                $this->SetValue('Z2M_ColorTempRGBKelvin', 1000000 / $payload['color_temp_rgb']); //Convert to Kelvin
+                            }
+                            $handled = true;
+                            break;
+                        case 'color_temp':
+                            $this->SetValue('Z2M_ColorTemp', $payload['color_temp']);
+                            if ($payload['color_temp'] > 0) {
+                                $this->SetValue('Z2M_ColorTempKelvin', 1000000 / $payload['color_temp']); //Convert to Kelvin
+                            }
+                            $handled = true;
+                            break;
+                        case 'brightness_rgb':
+                            $this->EnableAction('Z2M_BrightnessRGB');
+                            $this->SetValue('Z2M_BrightnessRGB', $payload['brightness_rgb']);
+                            $handled = true;
+                            break;
+                        case 'color_temp_startup_rgb':
+                            $this->SetValue('Z2M_ColorTempStartupRGB', $payload['color_temp_startup_rgb']);
+                            $this->EnableAction('Z2M_ColorTempStartupRGB');
+                            $handled = true;
+                            break;
+                        case 'color_temp_startup_cct':
+                            $this->SetValue('Z2M_ColorTempStartupCCT', $payload['color_temp_startup_cct']);
+                            $this->EnableAction('Z2M_ColorTempStartupCCT');
+                            $handled = true;
+                            break;
+                        case 'color_temp_startup':
+                            $this->SetValue('Z2M_ColorTempStartup', $payload['color_temp_startup']);
+                            $this->EnableAction('Z2M_ColorTempStartup');
+                            $handled = true;
+                            break;
+                        case 'state_rgb':
+                            $this->handleStateChange('state_rgb', 'Z2M_StateRGB', 'State_rgb', $payload, );
+                            $this->EnableAction('Z2M_StateRGB');
+                            $handled = true;
+                            break;
+                        case 'state_cct':
+                            $this->handleStateChange('state_cct', 'Z2M_StateCCT', 'State_cct', $payload);
+                            $this->EnableAction('Z2M_StateCCT');
+                            $handled = true;
+                            break;
+                        case 'last_seen':
+                            $translate = $this->convertKeyToReadableFormat($key);
+                            $this->RegisterVariableInteger('Z2M_LastSeen', $this->Translate($translate), '~UnixTimestamp');
+                            $this->SetValue($ident, $value / 1000);
+                            $handled = true;
+                            break;
+                        case 'smoke_alarm_state':
+                            $translate = $this->convertKeyToReadableFormat($key);
+                            $this->handleStateChange($key, $ident, $translate, $payload);
+                            $handled = true;
+                            break;
                     }
-                }
-                if (array_key_exists('self_test', $payload)) {
-                    $this->SetValue('Z2M_SelfTest', $payload['self_test']);
-                }
-                if (array_key_exists('preheat', $payload)) {
-                    $this->SetValue('Z2M_Preheat', $payload['preheat']);
-                }
-                if (array_key_exists('led_state', $payload)) {
-                    $this->SetValue('Z2M_LedState', $payload['led_state']);
-                }
-                if (array_key_exists('duration_of_absence', $payload)) {
-                    $this->SetValue('Z2M_Absence', $payload['duration_of_absence']);
-                }
-                if (array_key_exists('duration_of_attendance', $payload)) {
-                    $this->SetValue('Z2M_Attendance', $payload['duration_of_attendance']);
-                }
-                if (array_key_exists('action_rate', $payload)) {
-                    $this->RegisterVariableInteger('Z2M_ActionRate', $this->Translate('Action Rate'), $ProfileName);
-                    $this->EnableAction('Z2M_ActionRate');
-                    $this->SetValue('Z2M_ActionRate', $payload['action_rate']);
-                }
-                if (array_key_exists('action_level', $payload)) {
-                    $this->RegisterVariableInteger('Z2M_ActionLevel', $this->Translate('Action Level'), $ProfileName);
-                    $this->EnableAction('Z2M_ActionLevel');
-                    $this->SetValue('Z2M_ActionLevel', $payload['action_level']);
-                }
-                if (array_key_exists('action_step_size', $payload)) {
-                    $this->SetValue('Z2M_ActionStepSize', $payload['action_step_size']);
-                }
-                if (array_key_exists('action_transition_time', $payload)) {
-                    $this->RegisterVariableInteger('Z2M_ActionTransTime', $this->Translate('Action Transition Time'), $ProfileName);
-                    $this->EnableAction('Z2M_ActionTransTime');
-                    $this->SetValue('Z2M_ActionTransTime', $payload['action_transition_time']);
-                }
-                if (array_key_exists('action_group', $payload)) {
-                    $this->SetValue('Z2M_ActionGroup', $payload['action_group']);
-                }
-                if (array_key_exists('action_color_temperature', $payload)) {
-                    $this->SetValue('Z2M_ActionColorTemp', $payload['action_color_temperature']);
-                }
-                if (array_key_exists('temperature', $payload)) {
-                    $this->SetValue('Z2M_Temperature', $payload['temperature']);
-                }
-                if (array_key_exists('temperature_l1', $payload)) {
-                    $this->SetValue('Z2M_TemperatureL1', $payload['temperature_l1']);
-                }
-                if (array_key_exists('temperature_l2', $payload)) {
-                    $this->SetValue('Z2M_TemperatureL2', $payload['temperature_l2']);
-                }
-                if (array_key_exists('temperature_l3', $payload)) {
-                    $this->SetValue('Z2M_TemperatureL3', $payload['temperature_l3']);
-                }
-                if (array_key_exists('temperature_l4', $payload)) {
-                    $this->SetValue('Z2M_TemperatureL4', $payload['temperature_l4']);
-                }
-                if (array_key_exists('temperature_l5', $payload)) {
-                    $this->SetValue('Z2M_TemperatureL5', $payload['temperature_l5']);
-                }
-                if (array_key_exists('temperature_l6', $payload)) {
-                    $this->SetValue('Z2M_TemperatureL6', $payload['temperature_l6']);
-                }
-                if (array_key_exists('temperature_l7', $payload)) {
-                    $this->SetValue('Z2M_TemperatureL7', $payload['temperature_l7']);
-                }
-                if (array_key_exists('temperature_l8', $payload)) {
-                    $this->SetValue('Z2M_TemperatureL8', $payload['temperature_l8']);
-                }
-                if (array_key_exists('device_temperature', $payload)) {
-                    $this->SetValue('Z2M_DeviceTemperature', $payload['device_temperature']);
-                }
-                if (array_key_exists('local_temperature', $payload)) {
-                    $this->SetValue('Z2M_LocalTemperature', $payload['local_temperature']);
-                }
-                if (array_key_exists('local_temperature_calibration', $payload)) {
-                    $this->SetValue('Z2M_LocalTemperatureCalibration', $payload['local_temperature_calibration']);
-                }
-                if (array_key_exists('max_temperature', $payload)) {
-                    $this->SetValue('Z2M_MaxTemperature', $payload['max_temperature']);
-                }
-                if (array_key_exists('min_temperature', $payload)) {
-                    $this->SetValue('Z2M_MinTemperature', $payload['min_temperature']);
-                }
-                if (array_key_exists('eco_temperature', $payload)) {
-                    $this->SetValue('Z2M_EcoTemperature', $payload['eco_temperature']);
-                }
-                if (array_key_exists('preset', $payload)) {
-                    $this->SetValue('Z2M_Preset', $payload['preset']);
-                }
-                if (array_key_exists('away_mode', $payload)) {
-                    $this->handleStateChange('away_mode', 'Z2M_AwayMode', 'Away Mode', $payload);
-                }
-                if (array_key_exists('away_preset_days', $payload)) {
-                    $this->SetValue('Z2M_AwayPresetDays', $payload['away_preset_days']);
-                }
-                if (array_key_exists('away_preset_temperature', $payload)) {
-                    $this->SetValue('Z2M_AwayPresetTemperature', $payload['away_preset_temperature']);
-                }
-                if (array_key_exists('boost_time', $payload)) {
-                    $this->SetValue('Z2M_BoostTime', $payload['boost_time']);
-                }
-                if (array_key_exists('comfort_temperature', $payload)) {
-                    $this->SetValue('Z2M_ComfortTemperature', $payload['comfort_temperature']);
-                }
-                if (array_key_exists('eco_temperature', $payload)) {
-                    $this->SetValue('Z2M_EcoTemperature', $payload['eco_temperature']);
-                }
-                if (array_key_exists('current_heating_setpoint', $payload)) {
-                    $this->SetValue('Z2M_CurrentHeatingSetpoint', $payload['current_heating_setpoint']);
-                }
-                if (array_key_exists('current_heating_setpoint_auto', $payload)) {
-                    $this->SetValue('Z2M_CurrentHeatingSetpoint', $payload['current_heating_setpoint_auto']);
-                }
-                if (array_key_exists('occupied_heating_setpoint', $payload)) {
-                    $this->SetValue('Z2M_OccupiedHeatingSetpoint', $payload['occupied_heating_setpoint']);
-                }
-                if (array_key_exists('pi_heating_demand', $payload)) {
-                    $this->SetValue('Z2M_PiHeatingDemand', $payload['pi_heating_demand']);
-                }
-                if (array_key_exists('system_mode', $payload)) {
-                    $this->SetValue('Z2M_SystemMode', $payload['system_mode']);
-                }
-                if (array_key_exists('running_state', $payload)) {
-                    $this->SetValue('Z2M_RunningState', $payload['running_state']);
-                }
-                if (array_key_exists('sensor', $payload)) {
-                    $this->SetValue('Z2M_Sensor', $payload['sensor']);
-                }
-                if (array_key_exists('linkquality', $payload)) {
-                    $this->SetValue('Z2M_Linkquality', $payload['linkquality']);
-                }
-                if (array_key_exists('valve_position', $payload)) {
-                    $this->SetValue('Z2M_ValvePosition', $payload['valve_position']);
-                }
-                if (array_key_exists('humidity', $payload)) {
-                    $this->SetValue('Z2M_Humidity', $payload['humidity']);
-                }
-                if (array_key_exists('pressure', $payload)) {
-                    $this->SetValue('Z2M_Pressure', $payload['pressure']);
-                }
-                if (array_key_exists('battery', $payload)) {
-                    $this->SetValue('Z2M_Battery', $payload['battery']);
-                }
-                //Da Millivolt und Volt mit dem selben Topic verschickt wird
-                if (array_key_exists('voltage', $payload)) {
-                    if ($payload['voltage'] > 400) { //Es gibt wahrscheinlich keine Zigbee Geräte mit über 400 Volt
-                        $this->SetValue('Z2M_Voltage', $payload['voltage'] / 1000);
-                    } else {
-                        $this->SetValue('Z2M_Voltage', $payload['voltage']);
-                    }
-                }
-                if (array_key_exists('current', $payload)) {
-                    $this->SetValue('Z2M_Current', $payload['current']);
-                }
-                if (array_key_exists('action', $payload)) {
-                    $this->SetValue('Z2M_Action', $payload['action']);
-                }
-                if (array_key_exists('min_brightness_l1', $payload)) {
-                    $this->SetValue('Z2M_MinBrightnessL1', $payload['min_brightness_l1']);
-                }
-                if (array_key_exists('Maxbrightness_l1', $payload)) {
-                    $this->SetValue('Z2M_MaxBrightnessL1', $payload['max_brightness_l1']);
-                }
-                if (array_key_exists('min_brightness_l2', $payload)) {
-                    $this->SetValue('Z2M_MinBrightnessL2', $payload['min_brightness_l2']);
-                }
-                if (array_key_exists('Maxbrightness_l2', $payload)) {
-                    $this->SetValue('Z2M_MaxBrightnessL2', $payload['max_brightness_l2']);
-                }
-                if (array_key_exists('brightness', $payload)) {
-                    $this->SetValue('Z2M_Brightness', $payload['brightness']);
-                }
-                if (array_key_exists('brightness_l1', $payload)) {
-                    $this->SetValue('Z2M_BrightnessL1', $payload['brightness_l1']);
-                }
-                if (array_key_exists('brightness_l2', $payload)) {
-                    $this->SetValue('Z2M_BrightnessL2', $payload['brightness_l2']);
-                }
-                if (array_key_exists('brightness_rgb', $payload)) {
-                    $this->EnableAction('Z2M_BrightnessRGB');
-                    $this->SetValue('Z2M_BrightnessRGB', $payload['brightness_rgb']);
-                }
-                if (array_key_exists('brightness_cct', $payload)) {
-                    $this->EnableAction('Z2M_BrightnessCCT');
-                    $this->SetValue('Z2M_BrightnessCCT', $payload['brightness_CCT']);
-                }
-                if (array_key_exists('brightness_white', $payload)) {
-                    $this->SetValue('Z2M_BrightnessWhite', $payload['brightness_white']);
-                }
-                if (array_key_exists('position', $payload)) {
-                    $this->SetValue('Z2M_Position', $payload['position']);
-                }
-                if (array_key_exists('position_left', $payload)) {
-                    $this->SetValue('Z2M_PositionLeft', $payload['position_left']);
-                }
-                if (array_key_exists('position_right', $payload)) {
-                    $this->SetValue('Z2M_PositionRight', $payload['position_right']);
-                }
-                if (array_key_exists('motor_speed', $payload)) {
-                    $this->SetValue('Z2M_MotorSpeed', $payload['motor_speed']);
-                }
-                if (array_key_exists('region_id', $payload)) {
-                    $this->SetValue('Z2M_RegionID', $payload['region_id']);
-                }
-                if (array_key_exists('occupancy', $payload)) {
-                    $this->SetValue('Z2M_Occupancy', $payload['occupancy']);
-                }
-                if (array_key_exists('occupancy_timeout', $payload)) {
-                    $this->SetValue('Z2M_OccupancyTimeout', $payload['occupancy_timeout']);
-                }
-                if (array_key_exists('motion_sensitivity', $payload)) {
-                    $this->SetValue('Z2M_MotionSensitivity', $payload['motion_sensitivity']);
-                }
-                if (array_key_exists('presence', $payload)) {
-                    $this->SetValue('Z2M_Presence', $payload['presence']);
-                }
-                if (array_key_exists('motion', $payload)) {
-                    $this->SetValue('Z2M_Motion', $payload['motion']);
-                }
-                if (array_key_exists('motion_direction', $payload)) {
-                    $this->SetValue('Z2M_MotionDirection', $payload['motion_direction']);
-                }
-                if (array_key_exists('motor_direction', $payload)) {
-                    $this->SetValue('Z2M_MotorDirection', $payload['motor_direction']);
-                }
-                if (array_key_exists('scene', $payload)) {
-                    $this->LogMessage('Please contact module developer. Undefined variable: scene', KL_WARNING);
-                    //$this->RegisterVariableString('Z2M_Scene', $this->Translate('Scene'), '');
-                    //$this->SetValue('Z2M_Scene', $payload['scene']);
-                }
-                if (array_key_exists('motion_speed', $payload)) {
-                    $this->SetValue('Z2M_MotionSpeed', $payload['motion_speed']);
-                }
-                if (array_key_exists('led_enable', $payload)) {
-                    $this->SetValue('Z2M_LEDEnable', $payload['led_enable']);
-                }
-                if (array_key_exists('replace_filter', $payload)) {
-                    $this->SetValue('Z2M_ReplaceFilter', $payload['replace_filter']);
-                }
-                if (array_key_exists('filter_age', $payload)) {
-                    $this->SetValue('Z2M_FilterAge', $payload['filter_age']);
-                }
-                if (array_key_exists('fan_speed', $payload)) {
-                    $this->SetValue('Z2M_FanSpeed', $payload['fan_speed']);
-                }
-                if (array_key_exists('air_quality', $payload)) {
-                    $this->SetValue('Z2M_AirQuality', $payload['air_quality']);
-                }
-                if (array_key_exists('radar_sensitivity', $payload)) {
-                    $this->SetValue('Z2M_RadarSensitivity', $payload['radar_sensitivity']);
-                }
-                if (array_key_exists('radar_scene', $payload)) {
-                    $this->SetValue('Z2M_RadarScene', $payload['radar_scene']);
-                }
-                if (array_key_exists('motor_working_mode', $payload)) {
-                    $this->SetValue('Z2M_MotorWorkingMode', $payload['motor_working_mode']);
-                }
-                if (array_key_exists('detection_interval', $payload)) {
-                    $this->SetValue('Z2M_DetectionInterval', $payload['detection_interval']);
-                }
-                if (array_key_exists('control', $payload)) {
-                    $this->SetValue('Z2M_Control', $payload['control']);
-                }
-                if (array_key_exists('mode', $payload)) {
-                    $this->SetValue('Z2M_Mode', $payload['mode']);
-                }
-                if (array_key_exists('week', $payload)) {
-                    $this->SetValue('Z2M_Week', $payload['week']);
-                }
-                if (array_key_exists('control_back_mode', $payload)) {
-                    $this->SetValue('Z2M_ControlBackMode', $payload['control_back_mode']);
-                }
-                if (array_key_exists('border', $payload)) {
-                    $this->SetValue('Z2M_Border', $payload['border']);
-                }
-                if (array_key_exists('illuminance', $payload)) {
-                    $this->SetValue('Z2M_Illuminance', $payload['illuminance']);
-                }
-                if (array_key_exists('illuminance_lux', $payload)) {
-                    if (@$this->GetIDForIdent('Z2M_Illuminance_Lux') > 0) {
-                        $this->SetValue('Z2M_Illuminance_Lux', $payload['illuminance_lux']);
-                    }
-                }
-                if (array_key_exists('illuminance_lux_l1', $payload)) {
-                    if (@$this->GetIDForIdent('Z2M_Illuminance_Lux_l1') > 0) {
-                        $this->SetValue('Z2M_Illuminance_Lux_l1', $payload['illuminance_lux_l1']);
-                    }
-                }
-                if (array_key_exists('illuminance_lux_l2', $payload)) {
-                    if (@$this->GetIDForIdent('Z2M_Illuminance_Lux_l2') > 0) {
-                        $this->SetValue('Z2M_Illuminance_Lux_l2', $payload['illuminance_lux_l2']);
-                    }
-                }
-                if (array_key_exists('illuminance_lux_l3', $payload)) {
-                    if (@$this->GetIDForIdent('Z2M_Illuminance_Lux_l3') > 0) {
-                        $this->SetValue('Z2M_Illuminance_Lux_l3', $payload['illuminance_lux_l3']);
-                    }
-                }
-                if (array_key_exists('illuminance_lux_l4', $payload)) {
-                    if (@$this->GetIDForIdent('Z2M_Illuminance_Lux_l4') > 0) {
-                        $this->SetValue('Z2M_Illuminance_Lux_l4', $payload['illuminance_lux_l4']);
-                    }
-                }
-                if (array_key_exists('illuminance_lux_l5', $payload)) {
-                    if (@$this->GetIDForIdent('Z2M_Illuminance_Lux_l5') > 0) {
-                        $this->SetValue('Z2M_Illuminance_Lux_l5', $payload['illuminance_lux_l5']);
-                    }
-                }
-                if (array_key_exists('illuminance_lux_l6', $payload)) {
-                    if (@$this->GetIDForIdent('Z2M_Illuminance_Lux_l6') > 0) {
-                        $this->SetValue('Z2M_Illuminance_Lux_l6', $payload['illuminance_lux_l6']);
-                    }
-                }
-                if (array_key_exists('illuminance_lux_l7', $payload)) {
-                    if (@$this->GetIDForIdent('Z2M_Illuminance_Lux_l7') > 0) {
-                        $this->SetValue('Z2M_Illuminance_Lux_l7', $payload['illuminance_lux_l7']);
-                    }
-                }
-                if (array_key_exists('illuminance_lux_l8', $payload)) {
-                    if (@$this->GetIDForIdent('Z2M_Illuminance_Lux_l8') > 0) {
-                        $this->SetValue('Z2M_Illuminance_Lux_l8', $payload['illuminance_lux_l8']);
-                    }
-                }
-                if (array_key_exists('strength', $payload)) {
-                    $this->SetValue('Z2M_Strength', $payload['strength']);
-                }
-                if (array_key_exists('water_leak', $payload)) {
-                    $this->SetValue('Z2M_WaterLeak', $payload['water_leak']);
-                }
-                if (array_key_exists('contact', $payload)) {
-                    $this->SetValue('Z2M_Contact', $payload['contact']);
-                }
-                if (array_key_exists('carbon_monoxide', $payload)) {
-                    $this->SetValue('Z2M_CarbonMonoxide', $payload['carbon_monoxide']);
-                }
-                if (array_key_exists('smoke', $payload)) {
-                    $this->SetValue('Z2M_Smoke', $payload['smoke']);
-                }
-                if (array_key_exists('smoke_density', $payload)) {
-                    $this->SetValue('Z2M_SmokeDensity', $payload['smoke_density']);
-                }
-                if (array_key_exists('tamper', $payload)) {
-                    $this->SetValue('Z2M_Tamper', $payload['tamper']);
-                }
-                if (array_key_exists('battery_low', $payload)) {
-                    $this->SetValue('Z2M_Battery_Low', $payload['battery_low']);
-                }
-                if (array_key_exists('action_angle', $payload)) {
-                    $this->SetValue('Z2M_ActionAngle', $payload['action_angle']);
-                }
-                if (array_key_exists('angle_x', $payload)) {
-                    $this->SetValue('Z2M_Angle_X', $payload['angle_x']);
-                }
-                if (array_key_exists('angle_y', $payload)) {
-                    $this->SetValue('Z2M_Angle_Y', $payload['angle_y']);
-                }
-                if (array_key_exists('angle_x_absolute', $payload)) {
-                    //$this->LogMessage('Please Contact Module Developer. Undefined Variable angle_x_absolute', KL_WARNING);
-                    //$this->RegisterVariableFloat('Z2M_Angle_X_Absolute', $this->Translate('Angle_X_Absolute'), '');
-                    $this->SetValue('Z2M_AngleXAbsolute', $payload['angle_x_absolute']);
-                }
-                if (array_key_exists('angle_y_absolute', $payload)) {
-                    //$this->LogMessage('Please contact module developer. Undefined variable: angle_y_absolute', KL_WARNING);
-                    //$this->RegisterVariableFloat('Z2M_Angle_Y_Absolute', $this->Translate('Angle_Y_Absolute'), '');
-                    $this->SetValue('Z2M_AngleYAbsolute', $payload['angle_y_absolute']);
-                }
-                if (array_key_exists('angle_z', $payload)) {
-                    $this->SetValue('Z2M_Angle_Z', $payload['angle_z']);
-                }
-                if (array_key_exists('action_from_side', $payload)) {
-                    $this->SetValue('Z2M_ActionFromSide', $payload['action_from_side']);
-                }
-                if (array_key_exists('action_side', $payload)) {
-                    $this->SetValue('Z2M_ActionSide', $payload['action_side']);
-                }
-                if (array_key_exists('action_to_side', $payload)) {
-                    $this->SetValue('Z2M_ActionToSide', $payload['action_to_side']);
-                }
-                if (array_key_exists('power', $payload)) {
-                    $this->SetValue('Z2M_Power', $payload['power']);
-                }
-                if (array_key_exists('consumer_connected', $payload)) {
-                    $this->SetValue('Z2M_Consumer_Connected', $payload['consumer_connected']);
-                }
-                if (array_key_exists('energy', $payload)) {
-                    $this->SetValue('Z2M_Energy', $payload['energy']);
-                }
-                if (array_key_exists('overload_protection', $payload)) {
-                    $this->SetValue('Z2M_OverloadProtection', $payload['overload_protection']);
-                }
-                if (array_key_exists('duration', $payload)) {
-                    $this->SetValue('Z2M_Duration', $payload['duration']);
-                }
-                if (array_key_exists('gas_value', $payload)) {
-                    $this->SetValue('Z2M_GasValue', $payload['gas_value']);
-                }
-                if (array_key_exists('gas', $payload)) {
-                    $this->SetValue('Z2M_Gas', $payload['gas']);
-                }
-                if (array_key_exists('action_duration', $payload)) {
-                    $this->SetValue('Z2M_ActionDuration', $payload['action_duration']);
-                }
-                if (array_key_exists('percent_state', $payload)) {
-                    $this->SetValue('Z2M_PercentState', $payload['percent_state']);
-                }
-                if (array_key_exists('color', $payload)) {
-                    if (array_key_exists('x', $payload['color'])) {
-                        $this->SendDebug(__FUNCTION__ . ' Color', $payload['color']['x'], 0);
-                        if (array_key_exists('brightness', $payload)) {
-                            $RGBColor = ltrim($this->xyToHEX($payload['color']['x'], $payload['color']['y'], $payload['brightness']), '#');
-                        } else {
-                            $RGBColor = ltrim($this->xyToHEX($payload['color']['x'], $payload['color']['y'], 255), '#');
+
+                    if (!$handled) {
+                        // Allgemeine Typbehandlung, wenn keine spezielle Behandlung durchgeführt wurde
+                        switch ($variableType) {
+                            case 0: // Boolean
+                                $value = filter_var($value, FILTER_VALIDATE_BOOLEAN);
+                                $this->SendDebug(__FUNCTION__, "Ident: $ident, Wert: $value, Typ: Boolean", 0);
+                                break;
+                            case 1: // Integer
+                                $value = intval($value);
+                                $this->SendDebug(__FUNCTION__, "Ident: $ident, Wert: $value, Typ: Integer", 0);
+                                break;
+                            case 2: // Float
+                                $value = floatval($value);
+                                $this->SendDebug(__FUNCTION__, "Ident: $ident, Wert: $value, Typ: Float", 0);
+                                break;
+                            case 3: // String
+                                $this->SendDebug(__FUNCTION__, "Ident: $ident, Wert: " . json_encode($value) . ", Typ: String", 0);
+                                if (is_array($value)) {
+                                // Konvertiert das Array zu einem String
+                                // $value = json_encode($value); // Für eine JSON-Darstellung
+                                    $value = implode(', ', $value); // Für eine kommagetrennte Liste
+                                } else {
+                                    // Stellt sicher, dass der Wert ein String ist
+                                    $value = strval($value);
+                                }
+                                break;
                         }
-                        $this->SendDebug(__FUNCTION__ . ' Color RGB HEX', $RGBColor, 0);
-                        $this->SetValue('Z2M_Color', hexdec(($RGBColor)));
-                    } elseif (array_key_exists('hue', $payload['color']) && array_key_exists('saturation', $payload['color'])) {
-                        $RGBColor = ltrim($this->HSToRGB($payload['color']['hue'], $payload['color']['saturation'], 255), '#');
-                        $this->SendDebug(__FUNCTION__ . ' Color RGB HEX', $RGBColor, 0);
-                        $this->SetValue('Z2M_ColorHS', hexdec($RGBColor));
+
+                        $this->SetValue($ident, $value);
                     }
-                }
-                if (array_key_exists('color_rgb', $payload)) {
-                    $this->SendDebug(__FUNCTION__ . ':: Color X', $payload['color_rgb']['x'], 0);
-                    $this->SendDebug(__FUNCTION__ . ':: Color Y', $payload['color_rgb']['y'], 0);
-                    if (array_key_exists('brightness_rgb', $payload)) {
-                        $RGBColor = ltrim($this->xyToHEX($payload['color_rgb']['x'], $payload['color_rgb']['y'], $payload['brightness_rgb']), '#');
-                    } else {
-                        $RGBColor = ltrim($this->xyToHEX($payload['color_rgb']['x'], $payload['color_rgb']['y']), '#');
-                    }
-                    $this->SendDebug(__FUNCTION__ . ' Color :: RGB HEX', $RGBColor, 0);
-                    $this->SetValue('Z2M_ColorRGB', hexdec(($RGBColor)));
-                }
-                if (array_key_exists('sensitivity', $payload)) {
-                    $this->SetValue('Z2M_Sensitivity', $payload['sensitivity']);
-                    $this->EnableAction('Z2M_Sensitivity');
-                }
-                if (array_key_exists('color_temp', $payload)) {
-                    $this->SetValue('Z2M_ColorTemp', $payload['color_temp']);
-                    //Color Temperature in Kelvin
-                    if ($payload['color_temp'] > 0) {
-                        $this->SetValue('Z2M_ColorTempKelvin', 1000000 / $payload['color_temp']); //Convert to Kelvin
-                    }
-                }
-                if (array_key_exists('color_temp_rgb', $payload)) {
-                    $this->SetValue('Z2M_ColorTempRGB', $payload['color_temp_rgb']);
-                    if ($payload['color_temp_rgb'] > 0) {
-                        $this->SetValue('Z2M_ColorTempRGBKelvin', 1000000 / $payload['color_temp_rgb']); //Convert to Kelvin
-                    }
-                }
-                if (array_key_exists('color_temp_cct', $payload)) {
-                    $this->SetValue('Z2M_ColorTempCCT', $payload['color_temp_cct']);
-                    if ($payload['color_temp_cct'] > 0) {
-                        $this->SetValue('Z2M_ColorTempCCTKelvin', 1000000 / $payload['color_temp_cct']); //Convert to Kelvin
-                    }
-                }
-                if (array_key_exists('color_temp_startup_rgb', $payload)) {
-                    $this->SetValue('Z2M_ColorTempStartupRGB', $payload['color_temp_startup_rgb']);
-                    $this->EnableAction('Z2M_ColorTempStartupRGB');
-                }
-                if (array_key_exists('color_temp_startup_cct', $payload)) {
-                    $this->SetValue('Z2M_ColorTempStartupCCT', $payload['color_temp_startup_cct']);
-                    $this->EnableAction('Z2M_ColorTempStartupCCT');
-                }
-                if (array_key_exists('color_temp_startup', $payload)) {
-                    $this->SetValue('Z2M_ColorTempStartup', $payload['color_temp_startup']);
-                    $this->EnableAction('Z2M_ColorTempStartup');
-                }
-                if (array_key_exists('state', $payload)) {
-                    if (in_array($payload['state'], ['ON', 'OFF'])) {
-                        $this->handleStateChange('state', 'Z2M_State', 'State', $payload, );
-                    } elseif (in_array($payload['state'], ['OPEN', 'CLOSE', 'STOP', 'move', 'presence', 'none'])) {
-                        $this->SetValue('Z2M_State', $payload['state']);
-                    } else {
-                        $this->SendDebug('State', 'Undefined State: ' . $payload['state'], 0);
-                    }
-                }
-                if (array_key_exists('led_disabled_night', $payload)) {
-                    $this->SetValue('Z2M_LEDDisabledNight', $payload['led_disabled_night']);
-                }
-                if (array_key_exists('state_rgb', $payload)) {
-                    $this->handleStateChange('state_rgb', 'Z2M_StateRGB', 'State_rgb', $payload, );
-                    $this->EnableAction('Z2M_StateRGB');
-                }
-                if (array_key_exists('state_cct', $payload)) {
-                    $this->handleStateChange('state_cct', 'Z2M_StateCCT', 'State_cct', $payload, );
-                    $this->EnableAction('Z2M_StateCCT');
-                }
-                if (array_key_exists('state_white', $payload)) {
-                    $this->handleStateChange('state_white', 'Z2M_StateWhite', 'State White', $payload);
-                }
-                if (array_key_exists('power_outage_memory', $payload)) {
-                    $this->SetValue('Z2M_PowerOutageMemory', $payload['power_outage_memory']);
-                }
-                if (array_key_exists('power_on_behavior', $payload)) {
-                    $this->SetValue('Z2M_PowerOnBehavior', $payload['power_on_behavior']);
-                }
-                if (array_key_exists('power_on_behavior_l1', $payload)) {
-                    $this->SetValue('Z2M_PowerOnBehaviorL1', $payload['power_on_behavior_l1']);
-                }
-                if (array_key_exists('power_on_behavior_l2', $payload)) {
-                    $this->SetValue('Z2M_PowerOnBehaviorL2', $payload['power_on_behavior_l2']);
-                }
-                if (array_key_exists('power_on_behavior_l3', $payload)) {
-                    $this->SetValue('Z2M_PowerOnBehaviorL3', $payload['power_on_behavior_l3']);
-                }
-                if (array_key_exists('power_on_behavior_l4', $payload)) {
-                    $this->SetValue('Z2M_PowerOnBehaviorL4', $payload['power_on_behavior_l4']);
-                }
-                if (array_key_exists('state_l1', $payload)) {
-                    $this->handleStateChange('state_l1', 'Z2M_Statel1', 'State 1', $payload);
-                }
-                if (array_key_exists('state_l2', $payload)) {
-                    $this->handleStateChange('state_l2', 'Z2M_Statel2', 'State 2', $payload);
-                }
-                if (array_key_exists('state_l3', $payload)) {
-                    $this->handleStateChange('state_l3', 'Z2M_Statel3', 'State 3', $payload);
-                }
-                if (array_key_exists('state_l4', $payload)) {
-                    $this->handleStateChange('state_l4', 'Z2M_Statel4', 'State 4', $payload);
-                }
-                if (array_key_exists('state_l5', $payload)) {
-                    $this->handleStateChange('state_l5', 'Z2M_Statel5', 'State 5', $payload);
-                }
-                if (array_key_exists('state_l6', $payload)) {
-                    $this->handleStateChange('state_l6', 'Z2M_Statel6', 'State 6', $payload);
-                }
-                if (array_key_exists('state_l7', $payload)) {
-                    $this->handleStateChange('state_l7', 'Z2M_Statel7', 'State 7', $payload);
-                }
-                if (array_key_exists('state_l8', $payload)) {
-                    $this->handleStateChange('state_l8', 'Z2M_Statel8', 'State 8', $payload);
-                }
-                if (array_key_exists('state_left', $payload)) {
-                    if (in_array($payload['state_left'], ['ON', 'OFF'])) {
-                        $this->handleStateChange('state_left', 'Z2M_state_left', 'State left', $payload);
-                    } elseif (in_array($payload['state_left'], ['OPEN', 'CLOSE', 'STOP'])) {
-                        $this->SetValue('Z2M_state_left', $payload['state_left']);
-                    } else {
-                        $this->SendDebug('State left', 'Undefined State: ' . $payload['state_left'], 0);
-                    }
-                }
-                if (array_key_exists('state_right', $payload)) {
-                    if (in_array($payload['state_right'], ['ON', 'OFF'])) {
-                        $this->handleStateChange('state_right', 'Z2M_state_right', 'State Right', $payload);
-                    } elseif (in_array($payload['state_right'], ['OPEN', 'CLOSE', 'STOP'])) {
-                        $this->SetValue('Z2M_state_right', $payload['state_right']);
-                    } else {
-                        $this->SendDebug('State right', 'Undefined State: ' . $payload['state_right'], 0);
-                    }
-                }
-                if (array_key_exists('window_detection', $payload)) {
-                    $this->handleStateChange('window_detection', 'Z2M_WindowDetection', 'Window_Detection', $payload);
-                }
-                if (array_key_exists('open_window', $payload)) {
-                    $this->handleStateChange('open_window', 'Z2M_OpenWindow', 'Open Window', $payload);
-                }
-                if (array_key_exists('window_open', $payload)) {
-                    $this->handleStateChange('window_open', 'Z2M_WindowOpen', 'Window Open', $payload);
-                }
-                if (array_key_exists('button_lock', $payload)) {
-                    $this->handleStateChange('button_lock', 'Z2M_ButtonLock', 'Button Lock', $payload);
-                }
-                if (array_key_exists('open_window_temperature', $payload)) {
-                    $this->SetValue('Z2M_OpenWindowTemperature', $payload['open_window_temperature']);
-                }
-                if (array_key_exists('holiday_temperature', $payload)) {
-                    $this->SetValue('Z2M_HolidayTemperature', $payload['holiday_temperature']);
-                }
-                if (array_key_exists('boost_timeset_countdown', $payload)) {
-                    $this->SetValue('Z2M_BoostTimesetCountdown', $payload['boost_timeset_countdown']);
-                }
-                if (array_key_exists('frost_protection', $payload)) {
-                    $this->handleStateChange('open_window', 'Z2M_OpenWindow', 'Open Window', $payload);
-                }
-                if (array_key_exists('heating_stop', $payload)) {
-                    $this->handleStateChange('heating_stop', 'Z2M_HeatingStop', 'Heating Stop', $payload);
-                }
-                if (array_key_exists('test', $payload)) {
-                    $this->SetValue('Z2M_Test', $payload['test']);
-                }
-                if (array_key_exists('valve_detection', $payload)) {
-                    $this->handleStateChange('valve_detection', 'Z2M_ValveDetection', 'Valve Detection', $payload);
-                }
-                if (array_key_exists('auto_lock', $payload)) {
-                    $this->handleStateChange('auto_lock', 'Z2M_AutoLock', 'Auto Lock', $payload);
-                }
-                if (array_key_exists('child_lock', $payload)) {
-                    $this->handleStateChange('child_lock', 'Z2M_ChildLock', 'Child Lock', $payload, ['LOCK' => true, 'UNLOCK' => false]);
-                }
-                if (array_key_exists('update_available', $payload)) {
-                    //Bleibt hier. gibt es nicht als Expose
-                    $this->RegisterVariableBoolean('Z2M_Update', $this->Translate('Update'), '');
-                    $this->SetValue('Z2M_Update', $payload['update_available']);
-                }
-                if (array_key_exists('voc', $payload)) {
-                    $this->SetValue('Z2M_VOC', $payload['voc']);
-                }
-                if (array_key_exists('pm25', $payload)) {
-                    $this->SetValue('Z2M_PM25', $payload['pm25']);
-                }
-                if (array_key_exists('co2', $payload)) {
-                    $this->SetValue('Z2M_CO2', $payload['co2']);
-                }
-                if (array_key_exists('formaldehyd', $payload)) {
-                    $this->SetValue('Z2M_Formaldehyd', $payload['formaldehyd']);
-                }
-                if (array_key_exists('force', $payload)) {
-                    $this->SetValue('Z2M_Force', $payload['force']);
-                }
-                if (array_key_exists('moving', $payload)) {
-                    $this->SetValue('Z2M_Moving', $payload['moving']);
-                }
-                if (array_key_exists('moving_left', $payload)) {
-                    $this->SetValue('Z2M_MovingLeft', $payload['moving_left']);
-                }
-                if (array_key_exists('moving_right', $payload)) {
-                    $this->SetValue('Z2M_MovingRight', $payload['moving_right']);
-                }
-                if (array_key_exists('trv_mode', $payload)) {
-                    $this->SetValue('Z2M_TRVMode', $payload['trv_mode']);
-                }
-                if (array_key_exists('calibration', $payload)) {
-                    $this->handleStateChange('calibration', 'Z2M_Calibration', 'Calibration', $payload);
-                }
-                if (array_key_exists('calibration_left', $payload)) {
-                    $this->handleStateChange('calibration_left', 'Z2M_CalibrationLeft', 'Calibration Left', $payload);
-                }
-                if (array_key_exists('calibration_right', $payload)) {
-                    $this->handleStateChange('calibration_right', 'Z2M_CalibrationRight', 'Calibration Right', $payload);
-                }
-                if (array_key_exists('motor_reversal', $payload)) {
-                    $this->handleStateChange('motor_reversal', 'Z2M_MotorReversal', 'Motor Reversal', $payload);
-                }
-                if (array_key_exists('motor_reversal_left', $payload)) {
-                    $this->handleStateChange('motor_reversal_left', 'Z2M_MotorReversalLeft', 'Motor Reversal Left', $payload);
-                }
-                if (array_key_exists('motor_reversal_right', $payload)) {
-                    $this->handleStateChange('motor_reversal_right', 'Z2M_MotorReversalRight', 'Motor Reversal Right', $payload);
-                }
-                if (array_key_exists('calibration_time', $payload)) {
-                    $this->SetValue('Z2M_CalibrationTime', $payload['calibration_time']);
-                }
-                if (array_key_exists('calibration_time_left', $payload)) {
-                    $this->SetValue('Z2M_CalibrationTimeLeft', $payload['calibration_time_left']);
-                }
-                if (array_key_exists('calibration_time_right', $payload)) {
-                    $this->SetValue('Z2M_CalibrationTimeRight', $payload['calibration_time_right']);
-                }
-                if (array_key_exists('target_distance', $payload)) {
-                    $this->SetValue('Z2M_TargetDistance', $payload['target_distance']);
-                }
-                if (array_key_exists('minimum_range', $payload)) {
-                    $this->SetValue('Z2M_MinimumRange', $payload['minimum_range']);
-                }
-                if (array_key_exists('maximum_range', $payload)) {
-                    $this->SetValue('Z2M_MaximumRange', $payload['maximum_range']);
-                }
-                if (array_key_exists('deadzone_temperature', $payload)) {
-                    $this->SetValue('Z2M_DeadzoneTemperature', $payload['deadzone_temperature']);
-                }
-                if (array_key_exists('max_temperature_limit', $payload)) {
-                    $this->SetValue('Z2M_MaxTemperatureLimit', $payload['max_temperature_limit']);
-                }
-                if (array_key_exists('detection_delay', $payload)) {
-                    $this->SetValue('Z2M_DetectionDelay', $payload['detection_delay']);
-                }
-                if (array_key_exists('fading_time', $payload)) {
-                    $this->SetValue('Z2M_FadingTime', $payload['fading_time']);
-                }
-                if (array_key_exists('trigger', $payload)) {
-                    $this->handleStateChange('trigger', 'Z2M_Trigger', 'Trigger', $payload);
-                }
-                if (array_key_exists('garage_door_contact', $payload)) {
-                    $this->SetValue('Z2M_GarageDoorContact', $payload['garage_door_contact']);
-                }
-                if (array_key_exists('brightness_level', $payload)) {
-                    $this->SetValue('Z2M_BrightnessLevel', $payload['brightness_level']);
-                }
-                if (array_key_exists('trigger_indicator', $payload)) {
-                    $this->SetValue('Z2M_TriggerIndicator', $payload['trigger_indicator']);
-                }
-                if (array_key_exists('factory_reset', $payload)) {
-                    $this->SetValue('Z2M_FactoryReset', $payload['factory_reset']);
-                }
-                if (array_key_exists('action_code', $payload)) {
-                    $this->SetValue('Z2M_ActionCode', $payload['action_code']);
-                }
-                if (array_key_exists('action_transaction', $payload)) {
-                    $this->SetValue('Z2M_ActionTransaction', $payload['action_transaction']);
-                }
-                if (array_key_exists('vibration', $payload)) {
-                    $this->SetValue('Z2M_Vibration', $payload['vibration']);
+                } else {
+                    // Die Variable existiert nicht; hier könnte Logik zum Erstellen der Variable stehen
+                    $this->SendDebug(__FUNCTION__, "Ident $ident nicht gefunden", 0);
                 }
             }
         }
+    }
+    private function convertKeyToReadableFormat($key)
+    {
+        $this->SendDebug(__FUNCTION__, "Schlüssel: $key", 0);
+        $translateParts = explode('_', $key); // Teilt den Schlüssel in Teile
+        $translatedParts = array_map('ucfirst', $translateParts); // Kapitalisiert jeden Teil
+        $translate = implode(' ', $translatedParts); // Fügt die Teile mit einem Leerzeichen zusammen
+        return $translate;
+    }
+
+    private function convertKeyToIdent($key)
+    {
+        $identParts = explode('_', $key); // Teilt den Schlüssel an Unterstrichen
+        $capitalizedParts = array_map('ucfirst', $identParts); // Kapitalisiert jeden Teil
+        $ident = 'Z2M_' . implode('', $capitalizedParts); // Fügt die Teile mit einem Präfix zusammen
+        $this->SendDebug(__FUNCTION__, "Ident: $ident", 0);
+        return $ident;
     }
 
     public function setColorExt($color, string $mode, array $params = [], string $Z2MMode = 'color')
@@ -1557,7 +508,9 @@ trait Zigbee2MQTTHelper
     {
         // Gehört zu RequestAction
         $identWithoutPrefix = str_replace('Z2M_', '', $ident);
+        $this->SendDebug('Info :: convertIdentToPayloadKey', 'Ident: '. $ident.'-> IdentWithoutPrefix: '. $identWithoutPrefix, 0);
         $payloadKey = strtolower(preg_replace('/([a-z])([A-Z])/', '$1_$2', $identWithoutPrefix));
+        $this->SendDebug('Info :: convertIdentToPayloadKey', 'Ident: '. $ident.'-> PayloadKey: '. $payloadKey, 0);
         return $payloadKey;
     }
 
