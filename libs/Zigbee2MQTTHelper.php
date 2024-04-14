@@ -27,48 +27,45 @@ trait Zigbee2MQTTHelper
 
     public function RequestAction($ident, $value)
     {
-        $handled = false; // Initialisierung mit false
-
         // Behandle spezielle Fälle separat
         switch ($ident) {
-            case 'Z2M_Color':
-                $this->SendDebug(__FUNCTION__ . ' Color', $value, 0);
-                $this->setColor($value, 'cie');
-                $handled = true; // Spezialfall wurde behandelt
-                break;
-            case 'Z2M_ColorHS':
-                $this->SendDebug(__FUNCTION__ . ' Color HS', $value, 0);
-                $this->setColor($value, 'hs');
-                $handled = true; // Spezialfall wurde behandelt
-                break;
-            case 'Z2M_ColorRGB':
-                $this->SendDebug(__FUNCTION__ . ' :: Color RGB', $value, 0);
-                $this->setColor($value, 'cie', 'color_rgb');
-                $handled = true; // Spezialfall wurde behandelt
-                break;
-            case 'Z2M_ColorTempKelvin':
-                $convertedValue = strval(intval(round(1000000 / $value, 0)));
-                $payloadKey = $this->convertIdentToPayloadKey($ident);
-                $payload = [$payloadKey => $convertedValue];
-                $payloadJSON = json_encode($payload, JSON_UNESCAPED_SLASHES);
-                $this->Z2MSet($payloadJSON);
-                $handled = true; // Spezialfall wurde behandelt
-                break;
-        }
+        case 'Z2M_ColorTempPresets':
+            $this->SendDebug(__FUNCTION__ . ' ColorTempPresets', $value, 0);
+            // Erstellen des Payloads für die Farbtemperatur
+            $payload = json_encode(['color_temp' => $value], JSON_UNESCAPED_SLASHES);
 
-        // Überprüfen, ob ein spezieller Fall bereits behandelt wurde
-        if (!$handled) {
-            // Generelle Logik für die meisten anderen Fälle
-            $variableID = $this->GetIDForIdent($ident);
-            $variableInfo = IPS_GetVariable($variableID);
-            $variableType = $variableInfo['VariableType'];
+            // Senden des Payloads
+            $this->Z2MSet($payload);
+            return;
+        case 'Z2M_Color':
+            $this->SendDebug(__FUNCTION__ . ' Color', $value, 0);
+            $this->setColor($value, 'cie');
+            return;
+        case 'Z2M_ColorHS':
+            $this->SendDebug(__FUNCTION__ . ' Color HS', $value, 0);
+            $this->setColor($value, 'hs');
+            return;
+        case 'Z2M_ColorRGB':
+            $this->SendDebug(__FUNCTION__ . ' :: Color RGB', $value, 0);
+            $this->setColor($value, 'cie', 'color_rgb');
+            return;
+        case 'Z2M_ColorTempKelvin':
+            $convertedValue = strval(intval(round(1000000 / $value, 0)));
             $payloadKey = $this->convertIdentToPayloadKey($ident);
-            $payload = [$payloadKey => $this->convertStateBasedOnMapping($ident, $value, $variableType)];
+            $payload = [$payloadKey => $convertedValue];
             $payloadJSON = json_encode($payload, JSON_UNESCAPED_SLASHES);
             $this->Z2MSet($payloadJSON);
+            return;
         }
+        // Generelle Logik für die meisten anderen Fälle
+        $variableID = $this->GetIDForIdent($ident);
+        $variableInfo = IPS_GetVariable($variableID);
+        $variableType = $variableInfo['VariableType'];
+        $payloadKey = $this->convertIdentToPayloadKey($ident);
+        $payload = [$payloadKey => $this->convertStateBasedOnMapping($ident, $value, $variableType)];
+        $payloadJSON = json_encode($payload, JSON_UNESCAPED_SLASHES);
+        $this->Z2MSet($payloadJSON);
     }
-
 
     public function getDeviceInfo()
     {
@@ -103,15 +100,15 @@ trait Zigbee2MQTTHelper
                 }
             }
 
-            $payload = json_decode($Buffer['Payload'], true);
+            $Payload = json_decode($Buffer['Payload'], true);
             if (fnmatch('symcon/' . $this->ReadPropertyString('MQTTBaseTopic') . '/' . $this->ReadPropertyString('MQTTTopic') . '/deviceInfo', $Buffer['Topic'])) {
-                if (is_array($payload['exposes'])) {
-                    $this->mapExposesToVariables($payload['exposes']);
+                if (is_array($Payload['exposes'])) {
+                    $this->mapExposesToVariables($Payload['exposes']);
                 }
             }
             if (fnmatch('symcon/' . $this->ReadPropertyString('MQTTBaseTopic') . '/' . $this->ReadPropertyString('MQTTTopic') . '/groupInfo', $Buffer['Topic'])) {
-                if (is_array($payload)) {
-                    $this->mapExposesToVariables($payload);
+                if (is_array($Payload)) {
+                    $this->mapExposesToVariables($Payload);
                 }
             }
 
@@ -333,21 +330,21 @@ trait Zigbee2MQTTHelper
                 $RGB = $this->HexToRGB($color);
                 $cie = $this->RGBToXy($RGB);
                 if ($Z2MMode = 'color') {
-                    $payload['color'] = $cie;
-                    $payload['brightness'] = $cie['bri'];
+                    $Payload['color'] = $cie;
+                    $Payload['brightness'] = $cie['bri'];
                 } elseif ($Z2MMode == 'color_rgb') {
-                    $payload['color_rgb'] = $cie;
+                    $Payload['color_rgb'] = $cie;
                 } else {
                     return;
                 }
 
                 foreach ($params as $key => $value) {
-                    $payload[$key] = $value;
+                    $Payload[$key] = $value;
                 }
 
-                $payloadJSON = json_encode($payload, JSON_UNESCAPED_SLASHES);
-                $this->SendDebug(__FUNCTION__, $payloadJSON, 0);
-                $this->Z2MSet($payloadJSON);
+                $PayloadJSON = json_encode($Payload, JSON_UNESCAPED_SLASHES);
+                $this->SendDebug(__FUNCTION__, $PayloadJSON, 0);
+                $this->Z2MSet($PayloadJSON);
                 break;
             default:
                 $this->SendDebug('setColor', 'Invalid Mode ' . $mode, 0);
@@ -566,11 +563,11 @@ trait Zigbee2MQTTHelper
             return $value ? 'true' : 'false';
         }
     }
-    private function handleStateChange($payloadKey, $valueId, $debugTitle, $payload, $stateMapping = null)
+    private function handleStateChange($payloadKey, $valueId, $debugTitle, $Payload, $stateMapping = null)
     {
-        // Gehört zu ReceiveData
-        if (array_key_exists($payloadKey, $payload)) {
-            $state = $payload[$payloadKey];
+        // Gehört zu RequestAction
+        if (array_key_exists($payloadKey, $Payload)) {
+            $state = $Payload[$payloadKey];
             if ($stateMapping === null) {
                 $stateMapping = ['ON' => true, 'OFF' => false];
             }
@@ -589,15 +586,15 @@ trait Zigbee2MQTTHelper
                 $RGB = $this->HexToRGB($color);
                 $cie = $this->RGBToXy($RGB);
                 if ($Z2MMode = 'color') {
-                    $payload['color'] = $cie;
-                    $payload['brightness'] = $cie['bri'];
+                    $Payload['color'] = $cie;
+                    $Payload['brightness'] = $cie['bri'];
                 } elseif ($Z2MMode == 'color_rgb') {
-                    $payload['color_rgb'] = $cie;
+                    $Payload['color_rgb'] = $cie;
                 } else {
                     return;
                 }
-                $payloadJSON = json_encode($payload, JSON_UNESCAPED_SLASHES);
-                $this->Z2MSet($payloadJSON);
+                $PayloadJSON = json_encode($Payload, JSON_UNESCAPED_SLASHES);
+                $this->Z2MSet($PayloadJSON);
                 break;
             case 'hs':
                 $this->SendDebug('setColor - Input Color', json_encode($color), 0);
@@ -611,7 +608,7 @@ trait Zigbee2MQTTHelper
                 $this->SendDebug('setColor - RGB Values for HSB Conversion', 'R: ' . $RGB[0] . ', G: ' . $RGB[1] . ', B: ' . $RGB[2], 0);
                 $HSB = $this->RGBToHSB($RGB[0], $RGB[1], $RGB[2]);
                 if ($Z2MMode == 'color') {
-                    $payload = [
+                    $Payload = [
                         'color' => [
                             'hue'        => $HSB['hue'],
                             'saturation' => $HSB['saturation'],
@@ -620,8 +617,8 @@ trait Zigbee2MQTTHelper
                 } else {
                     return;
                 }
-                $payloadJSON = json_encode($payload, JSON_UNESCAPED_SLASHES);
-                $this->Z2MSet($payloadJSON);
+                $PayloadJSON = json_encode($Payload, JSON_UNESCAPED_SLASHES);
+                $this->Z2MSet($PayloadJSON);
                 break;
             default:
                 $this->SendDebug('setColor', 'Invalid Mode ' . $mode, 0);
@@ -632,7 +629,7 @@ trait Zigbee2MQTTHelper
     private function registerVariableProfile($expose)
     {
         $ProfileName = 'Z2M.' . $expose['name'];
-        $tmpProfileName = '';
+        $unit = isset($expose['unit']) ? ' ' . $expose['unit'] : '';
 
         switch ($expose['type']) {
             case 'binary':
@@ -640,8 +637,8 @@ trait Zigbee2MQTTHelper
                     case 'consumer_connected':
                         if (!IPS_VariableProfileExists($ProfileName)) {
                             $this->RegisterProfileBooleanEx($ProfileName, 'Plug', '', '', [
-                                [false, $this->Translate('not connected'),  '', 0xFF0000],
-                                [true, $this->Translate('connected'),  '', 0x00FF00]
+                                [false, $this->Translate('not connected'), '', 0xFF0000],
+                                [true, $this->Translate('connected'), '', 0x00FF00]
                             ]);
                         }
                         break;
@@ -650,2073 +647,71 @@ trait Zigbee2MQTTHelper
                         break;
                 }
                 break;
+
             case 'enum':
                 if (array_key_exists('values', $expose)) {
-                    //Sortieren, damit der Hash auch dann passt, wenn die Values von Z2M in einer anderen Reihenfolge geliefert werden.
-                    sort($expose['values']);
+                    sort($expose['values']); // Sortieren, um Konsistenz beim Hashing zu gewährleisten
                     $tmpProfileName = implode('', $expose['values']);
-                    $ProfileName .= '.';
-                    $ProfileName .= dechex(crc32($tmpProfileName));
-                    switch ($ProfileName) {
-                        case 'Z2M.occupancy_sensitivity.b8421401':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Intensity', '', '', [
-                                    ['low', $this->Translate('Low'), '', 0x00FF00],
-                                    ['medium', $this->Translate('Medium'), '', 0x00FF00],
-                                    ['high', $this->Translate('High'), '', 0x00FF00],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.illumination.f4cbb805':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Illumination', '', '', [
-                                    ['dim', $this->Translate('Dim'), '', 0x00FF00],
-                                    ['bright', $this->Translate('Bright'), '', 0x00FF00],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.Calibrate.':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Calibrate', '', '', [
-                                    ['calibrate', $this->Translate('Calibrate'), '', 0x00FF00],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.temperature_alarm.15475477':
-                        case 'Z2M.humidity_alarm.15475477':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Alarm', '', '', [
-                                    ['lower_alarm', $this->Translate('Lower Alarm'), '', 0x00FF00],
-                                    ['upper_alarm', $this->Translate('Upper Alarm'), '', 0x00FF00],
-                                    ['cancel', $this->Translate('Cancel'), '', 0x00FF00],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.alarm_ringtone.d5606273':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['melody_1', $this->Translate('Melody') . ' 1', '', 0x00FF00],
-                                    ['melody_2', $this->Translate('Melody') . ' 2', '', 0x00FF00],
-                                    ['melody_3', $this->Translate('Melody') . ' 3', '', 0x00FF00],
-                                    ['melody_4', $this->Translate('Melody') . ' 4', '', 0x00FF00],
-                                    ['melody_5', $this->Translate('Melody') . ' 5', '', 0x00FF00],
+                    $ProfileName .= '.' . dechex(crc32($tmpProfileName));
 
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.opening_mode.724b010b':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['tilt', $this->Translate('Tilt'), '', 0x00FF00],
-                                    ['lift', $this->Translate('Lift'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.set_upper_limit.70b36756':
-                        case 'Z2M.set_bottom_limit.70b36756':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['SET', $this->Translate('Set'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.working_day.19c5c139':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['mon_sun', $this->Translate('Mon - Sun'), '', 0x00FF00],
-                                    ['mon_fri+sat+sun', $this->Translate('Mon - Fri & Sat & Sun'), '', 0x00FF00],
-                                    ['separate', $this->Translate('Seperate'), '', 0x00FF00],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.week_day.1d251e55':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['monday', $this->Translate('Monday'), '', 0x00FF00],
-                                    ['tuesday', $this->Translate('Tuesday'), '', 0x00FF00],
-                                    ['wednesday', $this->Translate('Wednesday'), '', 0x00FF00],
-                                    ['thursday', $this->Translate('Thursday'), '', 0x00FF00],
-                                    ['friday', $this->Translate('Friday'), '', 0x00FF00],
-                                    ['saturday', $this->Translate('Saturday'), '', 0x00FF00],
-                                    ['sunday', $this->Translate('Sunday'), '', 0x00FF00],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.valve_adapt_status.81ca7d32':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['none', $this->Translate('None'), '', 0x00FF00],
-                                    ['ready_to_calibrate', $this->Translate('Ready To Calibrate'), '', 0x00FF00],
-                                    ['calibration_in_progress', $this->Translate('Calibration in Progress'), '', 0x00FF00],
-                                    ['error', $this->Translate('Error'), '', 0x00FF00],
-                                    ['success', $this->Translate('Success'), '', 0x00FF00],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.detection_distance.cae0fad1':
-                        case 'Z2M.motion_state.0f5b1d2d':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['10 cm', $this->Translate('10 cm'), '', 0x00FF00],
-                                    ['20 cm', $this->Translate('20 cm'), '', 0x00FF00],
-                                    ['30 cm', $this->Translate('30 cm'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.motion_state.5874d5f5':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['large', $this->Translate('Large'), '', 0x00FF00],
-                                    ['medium', $this->Translate('Medium'), '', 0x00FF00],
-                                    ['none', $this->Translate('None'), '', 0x00FF00],
-                                    ['small', $this->Translate('Small'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.detection_distance.cae0fad1':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['none', $this->Translate('None'), '', 0x00FF00],
-                                    ['small', $this->Translate('Small'), '', 0x00FF00],
-                                    ['medium', $this->Translate('Medium'), '', 0x00FF00],
-                                    ['large', $this->Translate('Large'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.presence_state.ffd9a501':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['none', $this->Translate('None'), '', 0xFF0000],
-                                    ['present', $this->Translate('Present'), '', 0x00FF00],
-                                    ['moving', $this->Translate('Moving'), '', 0x00FF00],
-                                    ['presence', $this->Translate('Presence'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.self_test_result.c088393d':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['checking', $this->Translate('Checking'), '', 0xFF0000],
-                                    ['success', $this->Translate('Success'), '', 0x00FF00],
-                                    ['failure', $this->Translate('failure'), '', 0xFF0000],
-                                    ['others', $this->Translate('others'), '', 0xFF8800]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.presence_event.ef1acb4c':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['enter', $this->Translate('Enter'), '', 0xFF0000],
-                                    ['leave', $this->Translate('Leave'), '', 0x00FF00],
-                                    ['left_enter', $this->Translate('Left Enter'), '', 0x00FF00],
-                                    ['right_leave', $this->Translate('Right Leave'), '', 0x00FF00],
-                                    ['right_enter', $this->Translate('Right Enter'), '', 0x00FF00],
-                                    ['left_leave', $this->Translate('Left Leave'), '', 0x00FF00],
-                                    ['approach', $this->Translate('Approach'), '', 0x00FF00],
-                                    ['Sway', $this->Translate('Left Enter'), '', 0x00FF00],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.monitoring_mode.45923aef':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['undirected', $this->Translate('Undirected'), '', 0xFF0000],
-                                    ['left_right', $this->Translate('Left/Right'), '', 0x00FF00],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.approach_distance.a1fc888b':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['far', $this->Translate('Far'), '', 0xFF0000],
-                                    ['medium', $this->Translate('Medium'), '', 0x00FF00],
-                                    ['near', $this->Translate('Near'), '', 0x00FF00],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.reset_nopresence_status':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['', $this->Translate('Reset'), '', 0xFF0000]
-                                ]);
-                            }
-                            break;
-                            case 'Z2M.device_mode.e8eb408':
-                            case 'Z2M.device_mode.887c8dff':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['single_rocker', $this->Translate('Single Rocker'), '', 0xFF0000],
-                                    ['single_push_button', $this->Translate('Single Push Button'), '', 0x00FF00],
-                                    ['dual_rocker', $this->Translate('Dual Rocker'), '', 0x00FF00],
-                                    ['dual_push_button', $this->Translate('Dual Push Button'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.alarm_mode.b39b85ae':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['alarm_sound', $this->Translate('Alarm Sound'), '', 0xFF0000],
-                                    ['alarm_light', $this->Translate('Alarm Light'), '', 0x00FF00],
-                                    ['alarm_sound_light', $this->Translate('Alarm Sound & Light'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.alarm_melody.65680ce3':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['melody1', $this->Translate('Melody 1'), '', 0x00FF00],
-                                    ['melody2', $this->Translate('Melody 2'), '', 0x00FF00],
-                                    ['melody3', $this->Translate('Melody 3'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.alarm_state.d6cc0174':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['alarm_sound', $this->Translate('Alarm Sound'), '', 0x00FF00],
-                                    ['alarm_light', $this->Translate('Alarm Light'), '', 0x00FF00],
-                                    ['alarm_sound_light', $this->Translate('Alarm Sound & Light'), '', 0x00FF00],
-                                    ['no_alarm', $this->Translate('No Alarm'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.motor_direction.cf88002f':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Shuffle', '', '', [
-                                    ['back', $this->Translate('Back'), '', 0x00FF00],
-                                    ['forward', $this->Translate('Forward'), '', 0x00FF00],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.color_power_on_behavior.ae76ffdc':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['initial', $this->Translate('Initial'), '', 0x00FF00],
-                                    ['previous', $this->Translate('Medium'), '', 0x00FF00],
-                                    ['cutomized', $this->Translate('Customized'), '', 0x00FF00],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.air_quality.ea904784':
-                        case 'Z2M.air_quality.64f2d4b3':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['excellent', $this->Translate('Excellent'), '', 0x00FF00],
-                                    ['good', $this->Translate('Good'), '', 0x00CD00],
-                                    ['hazardous', $this->Translate('Hazardous'), '', 0xFF4500],
-                                    ['moderate', $this->Translate('Moderate'), '', 0xEE4000],
-                                    ['out_of_range', $this->Translate('Out of range'), '', 0xCD3700],
-                                    ['poor', $this->Translate('poor'), '', 0xFF3030],
-                                    ['unhealthy', $this->Translate('Unhealthy'), '', 0xFF0000],
-                                    ['unknown', $this->Translate('Unknown'), '', 0x000000],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.displayed_temperature.f31d1694':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['target', $this->Translate('Target'), '', 0x00FF00],
-                                    ['measured', $this->Translate('Medium'), '', 0x00FF00],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.battery_state.b8421401':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Battery', '', '', [
-                                    ['low', $this->Translate('Low'), '', 0x00FF00],
-                                    ['medium', $this->Translate('Medium'), '', 0x00FF00],
-                                    ['high', $this->Translate('High'), '', 0x00FF00],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.temperature_unit.abf8ba6a':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Alert', '', '', [
-                                    ['celsius', $this->Translate('Celsius'), '', 0x00FF00],
-                                    ['fahrenheit', $this->Translate('Fahrenheit'), '', 0x00FF00],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.selftest.e0cc684':
-                        case 'Z2M.selftest.784dd132':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Menu', '', '', [
-                                    ['Test', $this->Translate('Test'), '', 0x00FF00],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.mute_buzzer.6c8bdc62':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Alert', '', '', [
-                                    ['Mute', $this->Translate('Mute'), '', 0x00FF00],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.adaptation_run_control.e596b9f2':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['none', $this->Translate('None'), '', 0x00FF00],
-                                    ['initiate_adaptation', $this->Translate('Initiate Adaptation'), '', 0x00FF00],
-                                    ['cancel_adaptation', $this->Translate('Cancel Adaptation'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.adaptation_run_status.cc98878f':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['none', $this->Translate('None'), '', 0x00FF00],
-                                    ['in_progress', $this->Translate('In Progress'), '', 0x00FF00],
-                                    ['found', $this->Translate('Found'), '', 0x00FF00],
-                                    ['lost', $this->Translate('Lost'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.day_of_week.87770221':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['sunday', $this->Translate('Sunday'), '', 0x00FF00],
-                                    ['monday', $this->Translate('Monday'), '', 0x00FF00],
-                                    ['tuesday', $this->Translate('Tuesday'), '', 0x00FF00],
-                                    ['wednesday', $this->Translate('Wednesday'), '', 0x00FF00],
-                                    ['thursday', $this->Translate('Thursday'), '', 0x00FF00],
-                                    ['Friday', $this->Translate('Friday'), '', 0x00FF00],
-                                    ['saturday', $this->Translate('Saturday'), '', 0x00FF00],
-                                    ['away_or_vacation', $this->Translate('Away Or Vacation'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.setpoint_change_source.2b697f02':
-                        case 'Z2M.setpoint_change_source.bc4ed50':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['manual', $this->Translate('manual'), '', 0x00FF00],
-                                    ['schedule', $this->Translate('Schedule'), '', 0x00FF00],
-                                    ['externally', $this->Translate('Externally'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.programming_operation_mode.5dfa482f':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['setpoint', $this->Translate('Setpoint'), '', 0x00FF00],
-                                    ['schedule', $this->Translate('Schedule'), '', 0x00FF00],
-                                    ['eco', $this->Translate('Eco'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.keypad_lockout.84f3d9b9':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Alert', '', '', [
-                                    ['unlock', $this->Translate('Unlock'), '', 0x00FF00],
-                                    ['lock1', $this->Translate('Lock 1'), '', 0x00FF00],
-                                    ['lock2', $this->Translate('Lock 2'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.buzzer.cd21c09a':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Alert', '', '', [
-                                    ['mute', $this->Translate('Mute'), '', 0x00FF00],
-                                    ['alarm', $this->Translate('Alarm'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.display_orientation.d6fc8316':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['normal', $this->Translate('Normal'), '', 0x00FF00],
-                                    ['flipped', $this->Translate('Flipped'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.action.2b653bba':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['press_1', $this->Translate('Press 1'), '', 0x00FF00],
-                                    ['press_1_and_2', $this->Translate('Press 1 and 2'), '', 0x00FF00],
-                                    ['press_1_and_2_and_3', $this->Translate('Press 1 and 2 and 3'), '', 0x00FF00],
-                                    ['press_1_and_2_and_4', $this->Translate('Press 1 and 2 and 4'), '', 0x00FF00],
-                                    ['press_1_and_3', $this->Translate('Press 1 and 3'), '', 0x00FF00],
-                                    ['press_1_and_3_and_4', $this->Translate('Press 1 and 3 and 4'), '', 0x00FF00],
-                                    ['press_1_and_4', $this->Translate('Press 1 and 4'), '', 0x00FF00],
-                                    ['press_2', $this->Translate('Press 2'), '', 0x00FF00],
-                                    ['press_2_and_3_and_4', $this->Translate('Press 2 and 3 and 4'), '', 0x00FF00],
-                                    ['press_2_and_4', $this->Translate('Press 2 and 4'), '', 0x00FF00],
-                                    ['press_3', $this->Translate('Press 3'), '', 0x00FF00],
-                                    ['press_3_and_4', $this->Translate('Press 3 and 4'), '', 0x00FF00],
-                                    ['press_4', $this->Translate('Press 4'), '', 0x00FF00],
-                                    ['press_all', $this->Translate('Press all'), '', 0x00FF00],
-                                    ['press_energy_bar', $this->Translate('Press energy bar'), '', 0x00FF00],
-                                    ['release', $this->Translate('Release'), '', 0x00FF00],
-                                    ['short_press_2_of_2', $this->Translate('Short press 2 of 2'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.action.7985b4e3':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['brightness_move_down', $this->Translate('Brightness move down'), '', 0x00FF00],
-                                    ['brightness_move_to_level', $this->Translate('Brightness Move To Level'), '', 0x00FF00],
-                                    ['brightness_move_up', $this->Translate('Brightness move up'), '', 0x00FF00],
-                                    ['brightness_stop', $this->Translate('Brightness Stop'), '', 0x00FF00],
-                                    ['color_temperature_move', $this->Translate('Color Temperature Move'), '', 0x00FF00],
-                                    ['hue_move', $this->Translate('Hue Move'), '', 0x00FF00],
-                                    ['hue_stop', $this->Translate('Hue Stop'), '', 0x00FF00],
-                                    ['move_to_saturation', $this->Translate('Move To Saturation'), '', 0x00FF00],
-                                    ['off', $this->Translate('Off'), '', 0x00FF00],
-                                    ['on', $this->Translate('On'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.action.49455f77':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['brightness_move_down_1', $this->Translate('Brightness Move Down 1'), '', 0x00FF00],
-                                    ['brightness_move_down_2', $this->Translate('Brightness Move Down 2'), '', 0x00FF00],
-                                    ['brightness_move_stop_1', $this->Translate('Brightness Move Stop 1'), '', 0x00FF00],
-                                    ['brightness_move_stop_2', $this->Translate('Brightness Move Stop 2'), '', 0x00FF00],
-                                    ['brightness_move_up_1', $this->Translate('Brightness Move Up 1'), '', 0x00FF00],
-                                    ['brightness_move_up_2', $this->Translate('Brightness Move Up 2'), '', 0x00FF00],
-                                    ['off_1', $this->Translate('Off 1'), '', 0x00FF00],
-                                    ['off_2', $this->Translate('Off 2'), '', 0x00FF00],
-                                    ['on_1', $this->Translate('On 1'), '', 0x00FF00],
-                                    ['on_2', $this->Translate('On 2'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.action.177702c6':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['hold', $this->Translate('Hold'), '', 0x00FF00],
-                                    ['on', $this->Translate('On'), '', 0x00FF00],
-                                    ['off', $this->Translate('Off'), '', 0x00FF00],
-                                    ['press', $this->Translate('Press'), '', 0x00FF00],
-                                    ['release', $this->Translate('Release'), '', 0x00FF00],
-                                    ['skip_backward', $this->Translate('Skip Backward'), '', 0x00FF00],
-                                    ['skip_forward', $this->Translate('Skip Forward'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.action.2593a6d2':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['arm_all_zones', $this->Translate('Arm All Zones'), '', 0x00FF00],
-                                    ['arm_day_zones', $this->Translate('Arm Day Zones'), '', 0x00FF00],
-                                    ['arm_night_zones', $this->Translate('Arm Night Zones'), '', 0x00FF00],
-                                    ['disarm', $this->Translate('Disarm'), '', 0x00FF00],
-                                    ['emergency', $this->Translate('Emergency'), '', 0x00FF00],
-                                    ['exit_delay', $this->Translate('Exit Delay'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.action.d9f7f4ac':
-                        case 'Z2M.action.a3d14936':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['single', $this->Translate('Single'), '', 0x00FF00],
-                                    ['double', $this->Translate('Double'), '', 0x00FF00],
-                                    ['hold', $this->Translate('Hold'), '', 0x00FF00],
-                                    ['long', $this->Translate('Long'), '', 0x00FF00],
-
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.action.faa13699':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['down', $this->Translate('Down'), '', 0x00FF00],
-                                    ['off', $this->Translate('Off'), '', 0x00FF00],
-                                    ['on', $this->Translate('On'), '', 0x00FF00],
-                                    ['select_0', $this->Translate('Select 0'), '', 0x00FF00],
-                                    ['select_1', $this->Translate('Select 1'), '', 0x00FF00],
-                                    ['select_2', $this->Translate('Select 2'), '', 0x00FF00],
-                                    ['select_3', $this->Translate('Select 3'), '', 0x00FF00],
-                                    ['select_4', $this->Translate('Select 4'), '', 0x00FF00],
-                                    ['select_5', $this->Translate('Select 5'), '', 0x00FF00],
-                                    ['stop', $this->Translate('Stop'), '', 0x00FF00],
-                                    ['up', $this->Translate('Up'), '', 0x00FF00],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.action.815b927a':
-                        case 'Z2M.action.b918bcb2':
-                        case 'Z2M.action.555bdfc4':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['1_single', $this->Translate('1 Single'), '', 0x00FF00],
-                                    ['1_double', $this->Translate('1 Double'), '', 0x00FF00],
-                                    ['1_hold', $this->Translate('1 Hold'), '', 0x00FF00],
-                                    ['2_single', $this->Translate('2 Single'), '', 0x00FF00],
-                                    ['2_double', $this->Translate('2 Double'), '', 0x00FF00],
-                                    ['2_hold', $this->Translate('2 Hold'), '', 0x00FF00],
-                                    ['3_single', $this->Translate('3 Single'), '', 0x00FF00],
-                                    ['3_double', $this->Translate('3 Double'), '', 0x00FF00],
-                                    ['3_hold', $this->Translate('3 Hold'), '', 0x00FF00],
-                                    ['4_single', $this->Translate('4 Single'), '', 0x00FF00],
-                                    ['4_double', $this->Translate('4 Double'), '', 0x00FF00],
-                                    ['4_hold', $this->Translate('4 Hold'), '', 0x00FF00],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.action.ccd55656':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['double', $this->Translate('Double'), '', 0x00FF00],
-                                    ['hold', $this->Translate('Hold'), '', 0x00FF00],
-                                    ['quadruple', $this->Translate('Quadruple'), '', 0x00FF00],
-                                    ['release', $this->Translate('Release'), '', 0x00FF00],
-                                    ['single', $this->Translate('Single'), '', 0x00FF00],
-                                    ['triple', $this->Translate('Triple'), '', 0x00FF00]]);
-                            }
-                            break;
-                        case 'Z2M.action.be89cdac':
-                        case 'Z2M.action.c1cb007d':
-                        case 'Z2M.action.be89cdac':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['brightness_move_down', $this->Translate('Brightness move down'), '', 0x00FF00],
-                                    ['brightness_move_up', $this->Translate('Brightness move up'), '', 0x00FF00],
-                                    ['brightness_step_down', $this->Translate('Brightness Step Down'), '', 0x00FF00],
-                                    ['brightness_step_up', $this->Translate('Brightness Step Up'), '', 0x00FF00],
-                                    ['brightness_stop', $this->Translate('Brightness Stop'), '', 0x00FF00],
-                                    ['toggle', $this->Translate('Toggle'), '', 0x00FF00],
-                                    ['rotate_right', $this->Translate('Rotate Right'), '', 0x00FF00],
-                                    ['rotate_left', $this->Translate('Rotate Left'), '', 0x00FF00],
-                                    ['rotate_stop', $this->Translate('Rotate Stop'), '', 0x00FF00],
-                                    ['skip_backward', $this->Translate('Skip Backward'), '', 0x00FF00],
-                                    ['skip_forward', $this->Translate('Skip Forward'), '', 0x00FF00],
-                                    ['play_pause', $this->Translate('Play Pause'), '', 0x00FF00],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.action.b4ce018d':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['brightness_step_down', $this->Translate('Brightness Step Down'), '', 0x00FF00],
-                                    ['brightness_step_up', $this->Translate('Brightness Step Up'), '', 0x00FF00],
-                                    ['on', $this->Translate('On'), '', 0x00FF00],
-                                    ['off', $this->Translate('Off'), '', 0x00FF00],
-                                    ['recall_*', $this->Translate('Unknown'), '', 0x00FF00],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.action.dc7fd161':
-                        case 'Z2M.action.dc7fd161':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['press_1', $this->Translate('Press 1'), '', 0x00FF00],
-                                    ['press_2', $this->Translate('Press 2'), '', 0x00FF00],
-                                    ['press_3', $this->Translate('Press 3'), '', 0x00FF00],
-                                    ['press_4', $this->Translate('Press 4'), '', 0x00FF00],
-                                    ['release_1', $this->Translate('Release 1'), '', 0x00FF00],
-                                    ['release_2', $this->Translate('Release 2'), '', 0x00FF00],
-                                    ['release_3', $this->Translate('Release 3'), '', 0x00FF00],
-                                    ['release_4', $this->Translate('Release 4'), '', 0x00FF00],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.action.350f117':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['press_1', $this->Translate('Press 1'), '', 0x00FF00],
-                                    ['press_1_and_3', $this->Translate('Press 1 and 3'), '', 0x00FF00],
-                                    ['press_2', $this->Translate('Press 2'), '', 0x00FF00],
-                                    ['press_2_and_4', $this->Translate('Press 2 and 4'), '', 0x00FF00],
-                                    ['press_3', $this->Translate('Press 3'), '', 0x00FF00],
-                                    ['press_4', $this->Translate('Press 4'), '', 0x00FF00],
-                                    ['press_energy_bar', $this->Translate('Press Energy Bar'), '', 0x00FF00],
-                                    ['release_1', $this->Translate('Release 1'), '', 0x00FF00],
-                                    ['release_1_and_3', $this->Translate('Release 1 and 3'), '', 0x00FF00],
-                                    ['release_2', $this->Translate('Release 2'), '', 0x00FF00],
-                                    ['release_2_and_4', $this->Translate('Release 2 and 4'), '', 0x00FF00],
-                                    ['release_3', $this->Translate('Release 3'), '', 0x00FF00],
-                                    ['release_4', $this->Translate('Release 4'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.action.869d1272':
-                        case 'Z2M.action.ec8cf04f':
-                        case 'Z2M.action.a084bd4e':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['on_press', $this->Translate('On Press'), '', 0x00FF00],
-                                    ['on_press_release', $this->Translate('On Press Release'), '', 0x00FF00],
-                                    ['on_hold', $this->Translate('On Hold'), '', 0x00FF00],
-                                    ['on_hold_release', $this->Translate('On Hold Release'), '', 0x00FF00],
-                                    ['up_press', $this->Translate('Up Press'), '', 0x00FF00],
-                                    ['up_press_release', $this->Translate('Up Press Release'), '', 0x00FF00],
-                                    ['up_hold', $this->Translate('Up Hold'), '', 0x00FF00],
-                                    ['up_hold_release', $this->Translate('Up Hold Release'), '', 0x00FF00],
-                                    ['down_press', $this->Translate('Down Press'), '', 0x00FF00],
-                                    ['down_press_release', $this->Translate('Down Press Release'), '', 0x00FF00],
-                                    ['down_hold', $this->Translate('Down Hold'), '', 0x00FF00],
-                                    ['down_hold_release', $this->Translate('Down Hold Release'), '', 0x00FF00],
-                                    ['off_press', $this->Translate('Off Press'), '', 0x00FF00],
-                                    ['off_press_release', $this->Translate('Off Press Release'), '', 0x00FF00],
-                                    ['off_hold', $this->Translate('Off Hold'), '', 0x00FF00],
-                                    ['off_hold_release', $this->Translate('Off Hold Release'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.action.712e126b':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['dots_1_double_press', $this->Translate('Dots 1 Double Press'), '', 0x00FF00],
-                                    ['dots_1_initial_press', $this->Translate('Dots 1 Initial Press'), '', 0x00FF00],
-                                    ['dots_1_long_press', $this->Translate('Dots 1 Long Press'), '', 0x00FF00],
-                                    ['dots_1_long_release', $this->Translate('Dots 1 Long Release'), '', 0x00FF00],
-                                    ['dots_1_short_release', $this->Translate('Dots 1 Short Release'), '', 0x00FF00],
-                                    ['dots_2_double_press', $this->Translate('Dots 2 Double Press'), '', 0x00FF00],
-                                    ['dots_2_initial_press', $this->Translate('Dots 2 Initial Press'), '', 0x00FF00],
-                                    ['dots_2_long_press', $this->Translate('Dots 2 Long Press'), '', 0x00FF00],
-                                    ['dots_2_long_release', $this->Translate('Dots 2 Long Release'), '', 0x00FF00],
-                                    ['dots_2_short_release', $this->Translate('Dots 2 Short Release'), '', 0x00FF00],
-                                    ['toggle', $this->Translate('Toggle'), '', 0x00FF00],
-                                    ['track_next', $this->Translate('Next Track'), '', 0x00FF00],
-                                    ['track_previous', $this->Translate('Previous Track'), '', 0x00FF00],
-                                    ['volume_down', $this->Translate('Volume Down'), '', 0x00FF00],
-                                    ['volume_down_hold', $this->Translate('Volume Down Hold'), '', 0x00FF00],
-                                    ['volume_up', $this->Translate('Volume Up'), '', 0x00FF00],
-                                    ['volume_up_hold', $this->Translate('Volume Up Hold'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.action.817f2757':
-                        case 'Z2M.action.bdac7927':
-                        case 'Z2M.action.301a3bd1':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['arrow_left_click', $this->Translate('Arrow Left Click'), '', 0x00FF00],
-                                    ['arrow_left_hold', $this->Translate('Arrow Left Hold'), '', 0x00FF00],
-                                    ['arrow_left_release', $this->Translate('Arrow Left Release'), '', 0x00FF00],
-                                    ['arrow_right_click', $this->Translate('Arrow Right click'), '', 0x00FF00],
-                                    ['arrow_right_hold', $this->Translate('Arrow Right Hold'), '', 0x00FF00],
-                                    ['arrow_right_release', $this->Translate('Arrow Right Release'), '', 0x00FF00],
-                                    ['brightness_down_hold', $this->Translate('Brightness Down Hold'), '', 0x00FF00],
-                                    ['brightness_down_release', $this->Translate('Brightness Down Release'), '', 0x00FF00],
-                                    ['brightness_down_click', $this->Translate('Brightness Down click'), '', 0x00FF00],
-                                    ['brightness_up_click', $this->Translate('Brightness Up click'), '', 0x00FF00],
-                                    ['brightness_up_hold', $this->Translate('Brightness Up Hold'), '', 0x00FF00],
-                                    ['brightness_up_release', $this->Translate('Brightness Up Release'), '', 0x00FF00],
-                                    ['brightness_move_down', $this->Translate('Brightness Move Down'), '', 0x00FF00],
-                                    ['brightness_move_up', $this->Translate('Brightness Move Up'), '', 0x00FF00],
-                                    ['brightness_stop', $this->Translate('Brightness Stop'), '', 0x00FF00],
-                                    ['toggle', $this->Translate('Toggle'), '', 0x00FF00],
-                                    ['off', $this->Translate('Off'), '', 0x00FF00],
-                                    ['on', $this->Translate('On'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                            case 'Z2M.action.f200af18':
-                                if (!IPS_VariableProfileExists($ProfileName)) {
-                                    $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                        ['double', $this->Translate('Double'), '', 0x00FF00],
-                                        ['hold', $this->Translate('Hold'), '', 0x00FF00],
-                                        ['release', $this->Translate('Release'), '', 0x00FF00],
-                                        ['shake', $this->Translate('Shake'), '', 0x00FF00],
-                                        ['single', $this->Translate('Single'), '', 0x00FF00]
-                                    ]);
-                                }
-                            break;
-                            case 'Z2M.action.bdac7927':
-                                if (!IPS_VariableProfileExists($ProfileName)) {
-                                    $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                        ['arrow_left_click', $this->Translate('Arrow Left Click'), '', 0x00FF00],
-                                        ['arrow_left_hold', $this->Translate('Arrow Left Hold'), '', 0x00FF00],
-                                        ['arrow_left_release', $this->Translate('Arrow Left Release'), '', 0x00FF00],
-                                        ['arrow_right_click', $this->Translate('Arrow Right click'), '', 0x00FF00],
-                                        ['arrow_right_hold', $this->Translate('Arrow Right Hold'), '', 0x00FF00],
-                                        ['arrow_right_release', $this->Translate('Arrow Right Release'), '', 0x00FF00],
-                                        ['brightness_down_hold', $this->Translate('Brightness Down Hold'), '', 0x00FF00],
-                                        ['brightness_down_release', $this->Translate('Brightness Down Release'), '', 0x00FF00],
-                                        ['brightness_down_click', $this->Translate('Brightness Down click'), '', 0x00FF00],
-                                        ['brightness_up_click', $this->Translate('Brightness Up click'), '', 0x00FF00],
-                                        ['brightness_up_hold', $this->Translate('Brightness Up Hold'), '', 0x00FF00],
-                                        ['brightness_up_release', $this->Translate('Brightness Up Release'), '', 0x00FF00],
-                                        ['toggle', $this->Translate('Toggle'), '', 0x00FF00]
-                                    ]);
-                                }
-                            break;
-                        case 'Z2M.action.29611a11':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['fall', $this->Translate('Fall'), '', 0x00FF00],
-                                    ['flip180', $this->Translate('Flip 180'), '', 0x00FF00],
-                                    ['flip90', $this->Translate('Flip 90'), '', 0x00FF00],
-                                    ['rotate_left', $this->Translate('Rotate Left'), '', 0x00FF00],
-                                    ['rotate_right', $this->Translate('Rotate Right'), '', 0x00FF00],
-                                    ['shake', $this->Translate('Shake'), '', 0x00FF00],
-                                    ['slide', $this->Translate('Slide'), '', 0x00FF00],
-                                    ['tap', $this->Translate('Tap'), '', 0x00FF00],
-                                    ['throw', $this->Translate('Throw'), '', 0x00FF00],
-                                    ['wakeup', $this->Translate('Wakeup'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.action.47d59fde':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['1_min_inactivity', $this->Translate('1 minute inactivity'), '', 0x00FF00],
-                                    ['flip180', $this->Translate('Flip 180'), '', 0x00FF00],
-                                    ['flip90', $this->Translate('Flip 90'), '', 0x00FF00],
-                                    ['flip_to_side', $this->Translate('Flip to side'), '', 0x00FF00],
-                                    ['hold', $this->Translate('Hold'), '', 0x00FF00],
-                                    ['rotate_left', $this->Translate('Rotate Left'), '', 0x00FF00],
-                                    ['rotate_right', $this->Translate('Rotate Right'), '', 0x00FF00],
-                                    ['shake', $this->Translate('Shake'), '', 0x00FF00],
-                                    ['side_up', $this->Translate('Side up'), '', 0x00FF00],
-                                    ['slide', $this->Translate('Slide'), '', 0x00FF00],
-                                    ['tap', $this->Translate('Tap'), '', 0x00FF00],
-                                    ['throw', $this->Translate('Throw'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.action.e87c79ad':
-                        case 'Z2M.action.64797105':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['left_hold', $this->Translate('Left Hold'), '', 0x00FF00],
-                                    ['left_hold_release', $this->Translate('Left Hold Release'), '', 0x00FF00],
-                                    ['left_press', $this->Translate('Left Press'), '', 0x00FF00],
-                                    ['left_press_release', $this->Translate('Left Press Release'), '', 0x00FF00],
-                                    ['right_hold', $this->Translate('Right Hold'), '', 0x00FF00],
-                                    ['right_hold_release', $this->Translate('Right Hold Release'), '', 0x00FF00],
-                                    ['right_press', $this->Translate('Right Press'), '', 0x00FF00],
-                                    ['right_press_release', $this->Translate('Right Press Release'), '', 0x00FF00],
-                                    ['toggle', $this->Translate('Toggle'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.action.85b816e8':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['single', $this->Translate('Single'), '', 0x00FF00],
-                                    ['double', $this->Translate('Double'), '', 0x00FF00],
-                                    ['hold', $this->Translate('Hold'), '', 0x00FF00],
-                                    ['many', $this->Translate('Many'), '', 0x00FF00],
-                                    ['quadruple', $this->Translate('Quadruple'), '', 0x00FF00],
-                                    ['release', $this->Translate('Release'), '', 0x00FF00],
-                                    ['triple', $this->Translate('Triple'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.action.33dbe026':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['double_both', $this->Translate('Double Both'), '', 0x00FF00],
-                                    ['double_left', $this->Translate('Double Left'), '', 0x00FF00],
-                                    ['double_right', $this->Translate('Double Right'), '', 0x00FF00],
-                                    ['hold_both', $this->Translate('Hold Both'), '', 0x00FF00],
-                                    ['hold_left', $this->Translate('Hold Left'), '', 0x00FF00],
-                                    ['hold_right', $this->Translate('Hold Right'), '', 0x00FF00],
-                                    ['single_both', $this->Translate('Single Both'), '', 0x00FF00],
-                                    ['single_left', $this->Translate('Single Left'), '', 0x00FF00],
-                                    ['single_right', $this->Translate('Single Right'), '', 0x00FF00],
-                                    ['triple_both', $this->Translate('Triple Both'), '', 0x00FF00],
-                                    ['triple_left', $this->Translate('Triple Left'), '', 0x00FF00],
-                                    ['triple_right', $this->Translate('Triple Right'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.action.14fac83':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['brightness_move_down', $this->Translate('Brightness move down'), '', 0x00FF00],
-                                    ['brightness_move_up', $this->Translate('Brightness move up'), '', 0x00FF00],
-                                    ['brightness_stop', $this->Translate('Brightness Stop'), '', 0x00FF00],
-                                    ['brightness_move_to_level', $this->Translate('Brightness Move To Level'), '', 0x00FF00],
-                                    ['off', $this->Translate('Off'), '', 0x00FF00],
-                                    ['on', $this->Translate('On'), '', 0x00FF00],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.action.bdac7927':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['arrow_left_click', $this->Translate('Arrow Left Click'), '', 0x00FF00],
-                                    ['arrow_left_hold', $this->Translate('Arrow Left Hold'), '', 0x00FF00],
-                                    ['arrow_left_release', $this->Translate('Arrow Left Release'), '', 0x00FF00],
-                                    ['arrow_right_click', $this->Translate('Arrow Right Click'), '', 0x00FF00],
-                                    ['arrow_right_hold', $this->Translate('Arrow Right Hold'), '', 0x00FF00],
-                                    ['arrow_right_release', $this->Translate('Arrow Right Release'), '', 0x00FF00],
-                                    ['brightness_down_click', $this->Translate('Brightness Down Click'), '', 0x00FF00],
-                                    ['brightness_down_hold', $this->Translate('Brightness DownHold'), '', 0x00FF00],
-                                    ['brightness_down_release', $this->Translate('Brightness Down Release'), '', 0x00FF00],
-                                    ['brightness_up_click', $this->Translate('Brightness Up Click'), '', 0x00FF00],
-                                    ['brightness_up_hold', $this->Translate('Brightness Up Hold'), '', 0x00FF00],
-                                    ['brightness_up_release', $this->Translate('Brightness Up Release'), '', 0x00FF00],
-                                    ['toggle', $this->Translate('toggle'), '', 0x00FF00],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.action.91e7a350':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['region_1_enter', $this->Translate('Region 1 enter'), '', 0x00FF00],
-                                    ['region_1_leave', $this->Translate('Region 1 leave'), '', 0x00FF00],
-                                    ['region_1_occupied', $this->Translate('Region 1 occupied'), '', 0x00FF00],
-                                    ['region_1_unoccupied', $this->Translate('Region 1 unoccupied'), '', 0x00FF00],
-                                    ['region_2_enter', $this->Translate('Region 2 enter'), '', 0x00FF00],
-                                    ['region_2_leave', $this->Translate('Region 2 leave'), '', 0x00FF00],
-                                    ['region_2_occupied', $this->Translate('Region 2 occupied'), '', 0x00FF00],
-                                    ['region_2_unoccupied', $this->Translate('Region 2 unoccupied'), '', 0x00FF00],
-                                    ['region_3_enter', $this->Translate('Region 3 enter'), '', 0x00FF00],
-                                    ['region_3_leave', $this->Translate('Region 3 leave'), '', 0x00FF00],
-                                    ['region_3_occupied', $this->Translate('Region 3 occupied'), '', 0x00FF00],
-                                    ['region_3_unoccupied', $this->Translate('Region 3 unoccupied'), '', 0x00FF00],
-                                    ['region_4_enter', $this->Translate('Region 4 enter'), '', 0x00FF00],
-                                    ['region_4_leave', $this->Translate('Region 4 leave'), '', 0x00FF00],
-                                    ['region_4_occupied', $this->Translate('Region 4 occupied'), '', 0x00FF00],
-                                    ['region_4_unoccupied', $this->Translate('Region 4 unoccupied'), '', 0x00FF00],
-                                    ['region_5_enter', $this->Translate('Region 5 enter'), '', 0x00FF00],
-                                    ['region_5_leave', $this->Translate('Region 5 leave'), '', 0x00FF00],
-                                    ['region_5_occupied', $this->Translate('Region 5 occupied'), '', 0x00FF00],
-                                    ['region_5_unoccupied', $this->Translate('Region 5 unoccupied'), '', 0x00FF00],
-                                    ['region_6_enter', $this->Translate('Region 6 enter'), '', 0x00FF00],
-                                    ['region_6_leave', $this->Translate('Region 6 leave'), '', 0x00FF00],
-                                    ['region_6_occupied', $this->Translate('Region 6 occupied'), '', 0x00FF00],
-                                    ['region_6_unoccupied', $this->Translate('Region 6 unoccupied'), '', 0x00FF00],
-                                    ['region_7_enter', $this->Translate('Region 7 enter'), '', 0x00FF00],
-                                    ['region_7_leave', $this->Translate('Region 7 leave'), '', 0x00FF00],
-                                    ['region_7_occupied', $this->Translate('Region 7 occupied'), '', 0x00FF00],
-                                    ['region_7_unoccupied', $this->Translate('Region 7 unoccupied'), '', 0x00FF00],
-                                    ['region_8_enter', $this->Translate('Region 8 enter'), '', 0x00FF00],
-                                    ['region_8_leave', $this->Translate('Region 8 leave'), '', 0x00FF00],
-                                    ['region_8_occupied', $this->Translate('Region 8 occupied'), '', 0x00FF00],
-                                    ['region_8_unoccupied', $this->Translate('Region 8 unoccupied'), '', 0x00FF00],
-                                    ['region_9_enter', $this->Translate('Region 9 enter'), '', 0x00FF00],
-                                    ['region_9_leave', $this->Translate('Region 9 leave'), '', 0x00FF00],
-                                    ['region_9_occupied', $this->Translate('Region 9 occupied'), '', 0x00FF00],
-                                    ['region_9_unoccupied', $this->Translate('Region 9 unoccupied'), '', 0x00FF00],
-                                    ['region_10_enter', $this->Translate('Region 10 enter'), '', 0x00FF00],
-                                    ['region_10_leave', $this->Translate('Region 10 leave'), '', 0x00FF00],
-                                    ['region_10_occupied', $this->Translate('Region 10 occupied'), '', 0x00FF00],
-                                    ['region_10_unoccupied', $this->Translate('Region 10 unoccupied'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.action.5a39b546':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['open', $this->Translate('Open'), '', 0x00FF00],
-                                    ['stop', $this->Translate('Stop'), '', 0xFF0000],
-                                    ['close', $this->Translate('Close'), '', 0xFF8800]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.action.d779c595':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['single_both', $this->Translate('Single Both'), '', 0x00FF00],
-                                    ['single_left', $this->Translate('Single Left'), '', 0xFF0000],
-                                    ['single_right', $this->Translate('Single Right'), '', 0xFF8800]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.action.c1844f92':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['button_1_hold', $this->Translate('Button 1 Hold'), '', 0x00FF00],
-                                    ['button_1_release', $this->Translate('Button 1 Release'), '', 0x00FF00],
-                                    ['button_1_single', $this->Translate('Button 1 Single'), '', 0x00FF00],
-                                    ['button_1_double', $this->Translate('Button 1 Double'), '', 0x00FF00],
-                                    ['button_1_triple', $this->Translate('Button 1 Tripple'), '', 0x00FF00],
-                                    ['button_2_hold', $this->Translate('Button 2 Hold'), '', 0x00FF00],
-                                    ['button_2_release', $this->Translate('Button 2 Release'), '', 0x00FF00],
-                                    ['button_2_single', $this->Translate('Button 2 Single'), '', 0x00FF00],
-                                    ['button_2_double', $this->Translate('Button 2 Double'), '', 0x00FF00],
-                                    ['button_2_triple', $this->Translate('Button 2 Tripple'), '', 0x00FF00],
-                                    ['button_3_hold', $this->Translate('Button 3 Hold'), '', 0x00FF00],
-                                    ['button_3_release', $this->Translate('Button 3 Release'), '', 0x00FF00],
-                                    ['button_3_single', $this->Translate('Button 3 Single'), '', 0x00FF00],
-                                    ['button_3_double', $this->Translate('Button 3 Double'), '', 0x00FF00],
-                                    ['button_3_triple', $this->Translate('Button 3 Tripple'), '', 0x00FF00],
-                                    ['button_4_hold', $this->Translate('Button 4 Hold'), '', 0x00FF00],
-                                    ['button_4_release', $this->Translate('Button 4 Release'), '', 0x00FF00],
-                                    ['button_4_single', $this->Translate('Button 4 Single'), '', 0x00FF00],
-                                    ['button_4_double', $this->Translate('Button 4 Double'), '', 0x00FF00],
-                                    ['button_4_triple', $this->Translate('Button 4 Tripple'), '', 0x00FF00],
-                                    ['button_5_hold', $this->Translate('Button 5 Hold'), '', 0x00FF00],
-                                    ['button_5_release', $this->Translate('Button 5 Release'), '', 0x00FF00],
-                                    ['button_5_single', $this->Translate('Button 5 Single'), '', 0x00FF00],
-                                    ['button_5_double', $this->Translate('Button 5 Double'), '', 0x00FF00],
-                                    ['button_5_triple', $this->Translate('Button 5 Tripple'), '', 0x00FF00],
-                                    ['button_6_hold', $this->Translate('Button 6 Hold'), '', 0x00FF00],
-                                    ['button_6_release', $this->Translate('Button 6 Release'), '', 0x00FF00],
-                                    ['button_6_single', $this->Translate('Button 6 Single'), '', 0x00FF00],
-                                    ['button_6_double', $this->Translate('Button 6 Double'), '', 0x00FF00],
-                                    ['button_6_triple', $this->Translate('Button 6 Tripple'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.action.e7f91f00':
-                        case 'Z2M.action.94c054ec':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['brightness_step_down', $this->Translate('Brightness Step Down'), '', 0x00FF00],
-                                    ['brightness_step_up', $this->Translate('Brightness Step Up'), '', 0x00FF00],
-                                    ['button_1_hold', $this->Translate('Button 1 Hold'), '', 0x00FF00],
-                                    ['button_1_hold_release', $this->Translate('Button 1 Hold Release'), '', 0x00FF00],
-                                    ['button_1_press', $this->Translate('Button 1 Press'), '', 0x00FF00],
-                                    ['button_1_press_release', $this->Translate('Button 1 Press Release'), '', 0x00FF00],
-                                    ['button_2_hold', $this->Translate('Button 2 Hold'), '', 0x00FF00],
-                                    ['button_2_hold_release', $this->Translate('Button 2 Hold Release'), '', 0x00FF00],
-                                    ['button_2_press', $this->Translate('Button 2 Press'), '', 0x00FF00],
-                                    ['button_2_press_release', $this->Translate('Button 2 Press Release'), '', 0x00FF00],
-                                    ['button_3_hold', $this->Translate('Button 3 Hold'), '', 0x00FF00],
-                                    ['button_3_hold_release', $this->Translate('Button 3 Hold Release'), '', 0x00FF00],
-                                    ['button_3_press', $this->Translate('Button 3 Press'), '', 0x00FF00],
-                                    ['button_3_press_release', $this->Translate('Button 3 Press Release'), '', 0x00FF00],
-                                    ['button_4_hold', $this->Translate('Button 4 Hold'), '', 0x00FF00],
-                                    ['button_4_hold_release', $this->Translate('Button 4 Hold Release'), '', 0x00FF00],
-                                    ['button_4_press', $this->Translate('Button 4 Press'), '', 0x00FF00],
-                                    ['button_4_press_release', $this->Translate('Button 4 Press Release'), '', 0x00FF00],
-                                    ['dial_rotate_left_fast', $this->Translate('Dial Rotate Left Fast'), '', 0x00FF00],
-                                    ['dial_rotate_left_slow', $this->Translate('Dial Rotate Left Slow'), '', 0x00FF00],
-                                    ['dial_rotate_left_step', $this->Translate('Dial Rotate Left Step'), '', 0x00FF00],
-                                    ['dial_rotate_right_fast', $this->Translate('Dial Rotate Right Fast'), '', 0x00FF00],
-                                    ['dial_rotate_right_slow', $this->Translate('Dial Rotate Right Slow'), '', 0x00FF00],
-                                    ['dial_rotate_right_step', $this->Translate('Dial Rotate Right Step'), '', 0x00FF00],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.action.5e7f11cc':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['vibration', $this->Translate('Vibration'), '', 0x00FF00],
-                                    ['tilt', $this->Translate('Tilt'), '', 0xFFFF00],
-                                    ['drop', $this->Translate('Drop'), '', 0xFF9900]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.gradient_scene.da30b2e':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Light', '', '', [
-                                    ['blossom', $this->Translate('Blossom'), '', 0x00FF00],
-                                    ['crocus', $this->Translate('Crocus'), '', 0x00FF00],
-                                    ['precious', $this->Translate('Precious'), '', 0x00FF00],
-                                    ['narcissa', $this->Translate('Narcissa'), '', 0x00FF00],
-                                    ['beginnings', $this->Translate('Beginnings'), '', 0x00FF00],
-                                    ['first_light', $this->Translate('First Light'), '', 0x00FF00],
-                                    ['horizon', $this->Translate('Horizon'), '', 0x00FF00],
-                                    ['valley_dawn', $this->Translate('Valley Down'), '', 0x00FF00],
-                                    ['sunflare', $this->Translate('Sunflare'), '', 0x00FF00],
-                                    ['emerald_flutter', $this->Translate('Emerald Flutter'), '', 0x00FF00],
-                                    ['memento', $this->Translate('Memento'), '', 0x00FF00],
-                                    ['resplendent', $this->Translate('Resplendent'), '', 0x00FF00],
-                                    ['scarlet_dream', $this->Translate('Scarlet Dream'), '', 0x00FF00],
-                                    ['lovebirds', $this->Translate('Lovebirds'), '', 0x00FF00],
-                                    ['smitten', $this->Translate('Smitten'), '', 0x00FF00],
-                                    ['glitz_and_glam', $this->Translate('Glitz and Glam'), '', 0x00FF00],
-                                    ['promise', $this->Translate('Promise'), '', 0x00FF00],
-                                    ['ruby_romance', $this->Translate('Ruby Romance'), '', 0x00FF00],
-                                    ['city_of_love', $this->Translate('City of Love'), '', 0x00FF00],
-                                    ['honolulu', $this->Translate('Honolulu'), '', 0x00FF00],
-                                    ['savanna_sunset', $this->Translate('Savanna Sunset'), '', 0x00FF00],
-                                    ['golden_pond', $this->Translate('Golden Pond'), '', 0x00FF00],
-                                    ['runy_glow', $this->Translate('Runny Glow'), '', 0x00FF00],
-                                    ['tropical_twilight', $this->Translate('Tropical Twilight'), '', 0x00FF00],
-                                    ['miami', $this->Translate('Miami'), '', 0x00FF00],
-                                    ['cancun', $this->Translate('Cancun'), '', 0x00FF00],
-                                    ['rio', $this->Translate('Rio'), '', 0x00FF00],
-                                    ['chinatown', $this->Translate('Chinatown'), '', 0x00FF00],
-                                    ['ibiza', $this->Translate('Ibiza'), '', 0x00FF00],
-                                    ['osaka', $this->Translate('Osaka'), '', 0x00FF00],
-                                    ['tokyo', $this->Translate('Tokyo'), '', 0x00FF00],
-                                    ['motown', $this->Translate('Motown'), '', 0x00FF00],
-                                    ['fairfax', $this->Translate('Fairfax'), '', 0x00FF00],
-                                    ['galaxy', $this->Translate('Galaxy'), '', 0x00FF00],
-                                    ['starlight', $this->Translate('Starlight'), '', 0x00FF00],
-                                    ['blood moon', $this->Translate('Blood Moon'), '', 0x00FF00],
-                                    ['artic_aurora', $this->Translate('Artic Aurora'), '', 0x00FF00],
-                                    ['moonlight', $this->Translate('Moonlight'), '', 0x00FF00],
-                                    ['nebula', $this->Translate('Nebula'), '', 0x00FF00],
-                                    ['sundown', $this->Translate('Sundown'), '', 0x00FF00],
-                                    ['blue_lagoon', $this->Translate('Blue Lagoon'), '', 0x00FF00],
-                                    ['palm_beach', $this->Translate('Palm Beach'), '', 0x00FF00],
-                                    ['lake_placid', $this->Translate('Lake Placid'), '', 0x00FF00],
-                                    ['mountain_breeze', $this->Translate('Mountain Breeze'), '', 0x00FF00],
-                                    ['lake_mist', $this->Translate('Lake Mist'), '', 0x00FF00],
-                                    ['ocean_dawn', $this->Translate('Ocean Dawn'), '', 0x00FF00],
-                                    ['frosty_dawn', $this->Translate('Frosty Dawn'), '', 0x00FF00],
-                                    ['sunday_morning', $this->Translate('Sunday Morning'), '', 0x00FF00],
-                                    ['emerald_isle', $this->Translate('Emerald Isle'), '', 0x00FF00],
-                                    ['spring_blossom', $this->Translate('Spring Blossom'), '', 0x00FF00],
-                                    ['midsummer_sun', $this->Translate('Midsummer Sun'), '', 0x00FF00],
-                                    ['autumn_gold', $this->Translate('Autumn Gold'), '', 0x00FF00],
-                                    ['spring_lake', $this->Translate('Spring Lake'), '', 0x00FF00],
-                                    ['winter_mountain', $this->Translate('Winter Mountain'), '', 0x00FF00],
-                                    ['midwinter', $this->Translate('Midwinter'), '', 0x00FF00],
-                                    ['amber_bloom', $this->Translate('Amber Bloom'), '', 0x00FF00],
-                                    ['lily', $this->Translate('Lily'), '', 0x00FF00],
-                                    ['painted_sky', $this->Translate('Painted Sky'), '', 0x00FF00],
-                                    ['winter_beauty', $this->Translate('Winter Beauty'), '', 0x00FF00],
-                                    ['orange_fields', $this->Translate('Orange Fields'), '', 0x00FF00],
-                                    ['forest_adventure', $this->Translate('Forest Adventure'), '', 0x00FF00],
-                                    ['blue_planet', $this->Translate('Blue Planet'), '', 0x00FF00],
-                                    ['soho', $this->Translate('Soho'), '', 0x00FF00],
-                                    ['vapor_wave', $this->Translate('Vapor Wave'), '', 0x00FF00],
-                                    ['magneto', $this->Translate('Magneto'), '', 0x00FF00],
-                                    ['tyrell', $this->Translate('Tyrell'), '', 0x00FF00],
-                                    ['disturbia', $this->Translate('Disturbia'), '', 0x00FF00],
-                                    ['hal', $this->Translate('Hal'), '', 0x00FF00],
-                                    ['golden_star', $this->Translate('Golden Star'), '', 0x00FF00],
-                                    ['under_the_tree', $this->Translate('Under the Tree'), '', 0x00FF00],
-                                    ['silent_night', $this->Translate('Silent Night'), '', 0x00FF00],
-                                    ['rosy_sparkle', $this->Translate('Rosy Sparkle'), '', 0x00FF00],
-                                    ['festive_fun', $this->Translate('Festive Fun'), '', 0x00FF00],
-                                    ['colour_burst', $this->Translate('Colour Burst'), '', 0x00FF00],
-                                    ['crystalline', $this->Translate('Crystalline'), '', 0x00FF00],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.system_mode.ba44e6f8':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['heat', $this->Translate('Heat'), '', 0x00FF00],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.switch_type.7c047117':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['toggle', $this->Translate('Toggle'), '', 0x00FF00],
-                                    ['state', $this->Translate('State'), '', 0xFFFF00],
-                                    ['momentary', $this->Translate('Momentary'), '', 0xFF9900],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.indicator_mode.c2a87bbe':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['off', $this->Translate('Off'), '', 0x00FF00],
-                                    ['off_on', $this->Translate('Off/On'), '', 0xFFFF00],
-                                    ['on_off', $this->Translate('On/Off'), '', 0xFF9900],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.indicator_mode.593418f7':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['off', $this->Translate('Off'), '', 0x00FF00],
-                                    ['off/on', $this->Translate('Off/On'), '', 0xFFFF00],
-                                    ['on/off', $this->Translate('On/Off'), '', 0xFF9900],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.indicator_mode.45cba34f':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['on', $this->Translate('On'), '', 0xFF00],
-                                    ['off', $this->Translate('Off'), '', 0x00FF00],
-                                    ['off/on', $this->Translate('Off/On'), '', 0xFFFF00],
-                                    ['on/off', $this->Translate('On/Off'), '', 0xFF9900],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.melody.a0adcd38':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Speaker', '', '', [
-                                    ['0', $this->Translate('0'), '', 0x000000],
-                                    ['1', $this->Translate('1'), '', 0x000000],
-                                    ['2', $this->Translate('2'), '', 0x000000],
-                                    ['3', $this->Translate('3'), '', 0x000000],
-                                    ['4', $this->Translate('4'), '', 0x000000],
-                                    ['5', $this->Translate('5'), '', 0x000000],
-                                    ['6', $this->Translate('6'), '', 0x000000],
-                                    ['7', $this->Translate('7'), '', 0x000000],
-                                    ['8', $this->Translate('8'), '', 0x000000],
-                                    ['9', $this->Translate('9'), '', 0x000000],
-                                    ['10', $this->Translate('10'), '', 0x000000],
-                                    ['11', $this->Translate('11'), '', 0x000000],
-                                    ['12', $this->Translate('12'), '', 0x000000],
-                                    ['13', $this->Translate('13'), '', 0x000000],
-                                    ['14', $this->Translate('14'), '', 0x000000],
-                                    ['15', $this->Translate('15'), '', 0x000000],
-                                    ['16', $this->Translate('16'), '', 0x000000],
-                                    ['17', $this->Translate('17'), '', 0x000000],
-                                    ['18', $this->Translate('18'), '', 0x000000]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.power_type.6557c94':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Plug', '', '', [
-                                    ['battery_full', $this->Translate('Battery Full'), '', 0x00FF00],
-                                    ['battery_high', $this->Translate('Battery High'), '', 0xFFFF00],
-                                    ['battery_medium', $this->Translate('Battery Medium'), '', 0xFF9900],
-                                    ['battery_low', $this->Translate('Battery Low'), '', 0xFF0000],
-                                    ['usb', $this->Translate('USB'), '', 0x0000FF]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.volume.b8421401':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Speaker', '', '', [
-                                    ['low', $this->Translate('Low'), '', 0x00FF00],
-                                    ['medium', $this->Translate('Medium'), '', 0xFFFF00],
-                                    ['high', $this->Translate('High'), '', 0xFF0000]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.backlight_mode.9e0e16e4':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Light', '', '', [
-                                    ['LOW', $this->Translate('Low'), '', 0xFFA500],
-                                    ['MEDIUM', $this->Translate('Medium'), '', 0xFF0000],
-                                    ['HIGH', $this->Translate('High'), '', 0x000000]
-                                ]);
-                            }
-                            // No break. Add additional comment above this line if intentional
-                        case 'Z2M.backlight_mode.b964fcdc':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Light', '', '', [
-                                    ['inverted', $this->Translate('Inverted'), '', 0xFFA500],
-                                    ['normal', $this->Translate('Normal'), '', 0xFF0000],
-                                    ['off', $this->Translate('Off'), '', 0x000000]
-                                ]);
-                            }
-                        break;
-                        case 'Z2M.system_mode.3aabe70a':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['auto', $this->Translate('Auto'), '', 0xFFA500],
-                                    ['heat', $this->Translate('Heat'), '', 0xFF0000],
-                                    ['off', $this->Translate('Off'), '', 0x000000]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.system_mode.e9feae72':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['heat', $this->Translate('Heat'), '', 0xFF0000],
-                                    ['off', $this->Translate('Off'), '', 0x000000]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.preset.9fca219c':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['manual', $this->Translate('Manual'), '', 0x00FF00],
-                                    ['schedule', $this->Translate('Schedule'), '', 0x8800FF],
-                                    ['holiday', $this->Translate('Holiday'), '', 0xFFa500],
-                                    ['boost', $this->Translate('Boost'), '', 0xFF0000]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.preset.879ced8a':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['manual', $this->Translate('Manual'), '', 0x00FF00],
-                                    ['programming', $this->Translate('Programming'), '', 0x8800FF],
-                                    ['holiday', $this->Translate('Holiday'), '', 0xFFa500],
-                                    ['temporary_manual', $this->Translate('Temporary Manual'), '', 0xFF0000]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.preset.72d7acf2':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['auto', $this->Translate('Auto'), '', 0xFFA500],
-                                    ['holiday', $this->Translate('Holiday'), '', 0xFFa500],
-                                    ['manual', $this->Translate('Manual'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.preset.400bed67':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['hold', $this->Translate('Hold'), '', 0xFFA500],
-                                    ['programm', $this->Translate('Program'), '', 0xFFa500],
-
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.preset.1d99b46a':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['comfort', $this->Translate('Comfort'), '', 0xFFFF00],
-                                    ['complex', $this->Translate('Complex'), '', 0x0000FF],
-                                    ['eco', $this->Translate('Eco'), '', 0x00FF00],
-                                    ['manual', $this->Translate('Manual'), '', 0x00FF00],
-                                    ['schedule', $this->Translate('Schedule'), '', 0x8800FF],
-                                    ['boost', $this->Translate('Boost'), '', 0xFF0000]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.preset.e1df23ef':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['comfort', $this->Translate('Comfort'), '', 0xFFFF00],
-                                    ['complex', $this->Translate('Complex'), '', 0x0000FF],
-                                    ['eco', $this->Translate('Eco'), '', 0x00FF00],
-                                    ['manual', $this->Translate('Manual'), '', 0x00FF00],
-                                    ['schedule', $this->Translate('Schedule'), '', 0x8800FF],
-                                    ['boost', $this->Translate('Boost'), '', 0xFF0000],
-                                    ['away', $this->Translate('Away'), '', 0xFFa500]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.preset.e4c8988a':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['auto', $this->Translate('Auto'), '', 0xFFFF00],
-                                    ['manual', $this->Translate('Manual'), '', 0x0000FF],
-                                    ['off', $this->Translate('Off'), '', 0x00FF00],
-                                    ['on', $this->Translate('On'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.running_state.8d38f7dc':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['heat', $this->Translate('Heat'), '', 0xFF0000],
-                                    ['idle', $this->Translate('Idle'), '', 0x000000]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.running_state.95941f91':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['cool', $this->Translate('Cool'), '', 0x0000FF],
-                                    ['heat', $this->Translate('Heat'), '', 0xFF0000],
-                                    ['idle', $this->Translate('Idle'), '', 0x000000]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.sensor.183d8cee':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['AL', $this->Translate('AL'), '', 0xFF0000],
-                                    ['IN', $this->Translate('IN'), '', 0x00FF00],
-                                    ['OU', $this->Translate('OU'), '', 0x0000FF]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.sensor.':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['external', $this->Translate('External'), '', 0xFF0000],
-                                    ['internal', $this->Translate('Internal'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.effect.988c295e':
-                        case 'Z2M.effect.fe70ca86':
-                        case 'Z2M.effect.efbfc77e':
-                        case 'Z2M.effect.dd503500':
-                        case 'Z2M.effect.5b9efbea':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Menu', '', '', [
-                                    ['blink', $this->Translate('Blink'), '', 0x0000FF],
-                                    ['breathe', $this->Translate('Breathe'), '', 0x0000FF],
-                                    ['okay', $this->Translate('Okay'), '', 0x0000FF],
-                                    ['channel_change', $this->Translate('Channel Change'), '', 0x0000FF],
-                                    ['candle', $this->Translate('Candle'), '', 0x0000FF],
-                                    ['fireplace', $this->Translate('Fireplace'), '', 0x0000FF],
-                                    ['colorloop', $this->Translate('Colorloop'), '', 0x0000FF],
-                                    ['sunrise', $this->Translate('Sunrise'), '', 0x0000FF],
-                                    ['stop_hue_effect', $this->Translate('Stop Hue Effect'), '', 0x0000FF],
-                                    ['finish_effect', $this->Translate('Finish Effect'), '', 0x0000FF],
-                                    ['stop_effect', $this->Translate('Stop Effect'), '', 0x0000FF]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.sensitivity.848c69b5':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Intensity', '', '', [
-                                    ['low', $this->Translate('Low'), '', 0x00FF00],
-                                    ['medium', $this->Translate('Medium'), '', 0xFF8800],
-                                    ['high', $this->Translate('High'), '', 0xFF0000]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.power_outage_memory.201b7646':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['on', $this->Translate('On'), '', 0x0000FF],
-                                    ['off', $this->Translate('Off'), '', 0x0000FF],
-                                    ['restore', $this->Translate('Restore'), '', 0x0000FF]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.power_outage_memory.198b1127':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['on', $this->Translate('On'), '', 0x0000FF],
-                                    ['off', $this->Translate('Off'), '', 0x0000FF],
-                                    ['restore', $this->Translate('Restore'), '', 0x0000FF]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.power_on_behavior.b0d55aad':
-                        case 'Z2M.power_on_behavior.8a599b04':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['on', $this->Translate('On'), '', 0x0000FF],
-                                    ['off', $this->Translate('Off'), '', 0x0000FF],
-                                    ['previous', $this->Translate('Previous'), '', 0x0000FF]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.power_on_behavior.420a27e2':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Information', '', '', [
-                                    ['on', $this->Translate('On'), '', 0x0000FF],
-                                    ['off', $this->Translate('Off'), '', 0x0000FF],
-                                    ['previous', $this->Translate('Previous'), '', 0x0000FF],
-                                    ['toggle', $this->Translate('Toggle'), '', 0x0000FF]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.backlight_mode':
-                        case 'Z2M.motion_sensitivity.b8421401':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Intensity', '', '', [
-                                    ['low', $this->Translate('Low'), '', 0x00FF00],
-                                    ['medium', $this->Translate('Medium'), '', 0xFF8800],
-                                    ['high', $this->Translate('High'), '', 0xFF0000]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.motion_sensitivity.848c69b5':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Intensity', '', '', [
-                                    ['low', $this->Translate('Low'), '', 0x00FF00],
-                                    ['medium', $this->Translate('Medium'), '', 0xFF8800],
-                                    ['high', $this->Translate('High'), '', 0xFF0000]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.motion_direction.1440af33':
-                        case 'Z2M.motion_direction.c4d8a6f1':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Move', '', '', [
-                                    ['moving_backward', $this->Translate('moving backward'), '', 0x00FF00],
-                                    ['moving_forward', $this->Translate('moving forward'), '', 0xFF0000],
-                                    ['standing_still', $this->Translate('standing still'), '', 0xFFFF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.force.85dac8d5':
-                        case 'Z2M.force.2bd28f19':
-                        case 'Z2M.force.a420d592':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Intensity', '', '', [
-                                    ['normal', $this->Translate('Normal'), '', 0x00FF00],
-                                    ['open', $this->Translate('Open'), '', 0xFF8800],
-                                    ['close', $this->Translate('Close'), '', 0xFF0000],
-                                    ['high', $this->Translate('High'), '', 0xFF0000],
-                                    ['standard', $this->Translate('Standard'), '', 0xFF0000],
-                                    ['very_high', $this->Translate('Very High'), '', 0xFF0000]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.moving.fe5886c':
-                        case 'Z2M.moving.7ac27aed':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Move', '', '', [
-                                    ['UP', $this->Translate('Up'), '', 0x00FF00],
-                                    ['STOP', $this->Translate('Stop'), '', 0xFF8800],
-                                    ['DOWN', $this->Translate('Down'), '', 0xFF0000]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.moving_left':
-                        case 'Z2M.moving_right':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Move', '', '', [
-                                    ['UP', $this->Translate('Up'), '', 0x00FF00],
-                                    ['STOP', $this->Translate('Stop'), '', 0xFF8800],
-                                    ['DOWN', $this->Translate('Down'), '', 0xFF0000]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.trv_mode.4f5344cd':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Climate', '', '', [
-                                    ['1', $this->Translate('Manual (Valve Position)'), '', 0x00FF00],
-                                    ['2', $this->Translate('Automatic'), '', 0xFF8800],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.sensitivity.b8421401':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Intensity', '', '', [
-                                    ['low', $this->Translate('Low'), '', 0x00FF00],
-                                    ['medium', $this->Translate('Medium'), '', 0xFF8800],
-                                    ['high', $this->Translate('High'), '', 0xFF0000]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.state.7c75b7a3':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Shutter', '', '', [
-                                    ['OPEN', $this->Translate('Open'), '', 0x00FF00],
-                                    ['STOP', $this->Translate('Stop'), '', 0xFF0000],
-                                    ['CLOSE', $this->Translate('Close'), '', 0xFF8800]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.state.1cb7a647':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Shutter', '', '', [
-                                    ['none', $this->Translate('None'), '', 0x00FF00],
-                                    ['presence', $this->Translate('Presence'), '', 0xFF0000],
-                                    ['move', $this->Translate('Move'), '', 0xFF8800]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.mode.a774535':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Mode', '', '', [
-                                    ['duration', $this->Translate('Duration'), '', 0x00FF00],
-                                    ['capacity', $this->Translate('Capacity'), '', 0xFF8800]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.mode.fecb2e2f':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Intensity', '', '', [
-                                    ['burglar', $this->Translate('Burglar'), '', 0xFFC0CB],
-                                    ['emergency', $this->Translate('Emergency'), '', 0xFFFF00],
-                                    ['emergency_panic', $this->Translate('Emergency Panic'), '', 0xFF8800],
-                                    ['fire', $this->Translate('Fire'), '', 0xFF0000],
-                                    ['fire_panic', $this->Translate('Fire Panic'), '', 0x880000],
-                                    ['Police_panic', $this->Translate('Police Panic'), '', 0x4169E1],
-                                    ['stop', $this->Translate('Stop'), '', 0x000000]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.mode.be3d8da4':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Intensity', '', '', [
-                                    ['morning', $this->Translate('Morning'), '', 0xFFC0CB],
-                                    ['night', $this->Translate('Night'), '', 0xFFFF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.mode.8cfb6fd7':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Intensity', '', '', [
-                                    ['click', $this->Translate('Click'), '', 0xFFC0CB],
-                                    ['program', $this->Translate('Program'), '', 0xFFFF00],
-                                    ['switch', $this->Translate('Switch'), '', 0x2ACFE8]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.fan_mode.c348e40f':
-                        case 'Z2M.mode.c348e40f':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Intensity', '', '', [
-                                    ['off', $this->Translate('Off'), '', 0xFF0000],
-                                    ['auto', $this->Translate('Auto'), '', 0x00FF00],
-                                    ['1', $this->Translate('1'), '', 0x00FF00],
-                                    ['2', $this->Translate('2'), '', 0x00FF00],
-                                    ['3', $this->Translate('3'), '', 0x000000],
-                                    ['4', $this->Translate('4'), '', 0x000000],
-                                    ['5', $this->Translate('5'), '', 0x000000],
-                                    ['6', $this->Translate('6'), '', 0x000000],
-                                    ['7', $this->Translate('7'), '', 0x000000],
-                                    ['8', $this->Translate('8'), '', 0x000000],
-                                    ['9', $this->Translate('9'), '', 0x000000]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.week.4e05e759':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Calendar', '', '', [
-                                    ['5+2', $this->Translate('5+2'), '', 0x00FF00],
-                                    ['6+1', $this->Translate('6+1'), '', 0xFF8800],
-                                    ['7', $this->Translate('7'), '', 0xFF0000]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.level.ae420ac':
-                        case 'Z2M.strobe_level.ae420ac':
-                        case 'Z2M.motion_sensitivity.f607dc1f':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Gear', '', '', [
-                                    ['low', $this->Translate('Low'), '', 0x00FF00],
-                                    ['medium', $this->Translate('Medium'), '', 0xFF8800],
-                                    ['high', $this->Translate('High'), '', 0xFF0000],
-                                    ['very_high', $this->Translate('Very High'), '', 0xFF8800],
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.radar_scene.b071d907':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Menu', '', '', [
-                                    ['area', $this->Translate('Area'), '', 0xFF0000],
-                                    ['bedroom', $this->Translate('Bedroom'), '', 0x8800FF],
-                                    ['default', $this->Translate('Default'), '', 0xFFFFFF],
-                                    ['hotel', $this->Translate('Hotel'), '', 0xFFFF00],
-                                    ['office', $this->Translate('Office'), '', 0x008800],
-                                    ['parlour', $this->Translate('Parlour'), '', 0x0000FF],
-                                    ['toilet', $this->Translate('Toilet'), '', 0xFF8800]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.motor_working_mode.12bc841d':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Menu', '', '', [
-                                    ['continuous', $this->Translate('Continuous'), '', 0xFF0000],
-                                    ['intermittently', $this->Translate('Intermittently'), '', 0x8800FF]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.control.a0c4f29e':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Menu', '', '', [
-                                    ['close', $this->Translate('Close'), '', 0xFF8800],
-                                    ['continue', $this->Translate('Continue'), '', 0xFFFF00],
-                                    ['open', $this->Translate('Open'), '', 0x00FF00],
-                                    ['stop', $this->Translate('Stop'), '', 0xFF0000]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.control_back_mode.cf88002f':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Menu', '', '', [
-                                    ['back', $this->Translate('Back'), '', 0xFF8800],
-                                    ['forward', $this->Translate('Forward'), '', 0xFFFF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.border.8e25e2eb':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Menu', '', '', [
-                                    ['down', $this->Translate('Down'), '', 0xFF8800],
-                                    ['down_delete', $this->Translate('Down Delete'), '', 0xFFFF00],
-                                    ['up', $this->Translate('Up'), '', 0x00FF00]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.brightness_state.95110215':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Menu', '', '', [
-                                    ['low', $this->Translate('Low'), '', 0x00FF00],
-                                    ['middle', $this->Translate('Middle'), '', 0xFF8800],
-                                    ['high', $this->Translate('High'), '', 0xFF0000],
-                                    ['strong', $this->Translate('Strong'), '', 0xFF8800]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.self_test.f4bae49d':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Menu', '', '', [
-                                    ['checking', $this->Translate('Checking'), '', 0xFFFF00],
-                                    ['check_success', $this->Translate('Check Success'), '', 0x00FF00],
-                                    ['check_failure', $this->Translate('Check Failure'), '', 0xFF0000],
-                                    ['others', $this->Translate('Others'), '', 0xFFFF00],
-                                    ['comm_fault', $this->Translate('Comm Fault'), '', 0xFF0000],
-                                    ['radar_fault', $this->Translate('Radar Fault'), '', 0xFF0000]
-                                ]);
-                            }
-                            break;
-                        case 'Z2M.brightness_level.9e0e16e4':
-                            if (!IPS_VariableProfileExists($ProfileName)) {
-                                $this->RegisterProfileStringEx($ProfileName, 'Menu', '', '', [
-                                    ['LOW', $this->Translate('Low'), '', 0x00FF00],
-                                    ['MEDIUM', $this->Translate('Medium'), '', 0xFF8800],
-                                    ['HIGH', $this->Translate('High'), '', 0xFF0000]
-                                ]);
-                            }
-                            break;
-                        default:
-                            $this->SendDebug(__FUNCTION__ . ':: Variableprofile missing', $ProfileName, 0);
-                            $this->SendDebug(__FUNCTION__ . ':: ProfileName Values', json_encode($expose['values']), 0);
-                            return false;
-                    }
-                }
-                break;
-            case 'numeric':
-                switch ($expose['property']) {
-                    case 'voc_index':
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileFloat($ProfileName, 'Information', '', ' ', 0, 0, 0, 2);
-                        }
-                        break;
-                    case 'voltage_a':
-                    case 'voltage_b':
-                    case 'voltage_c':
-                    case 'voltage_x':
-                    case 'voltage_X':
-                    case 'voltage_y':
-                    case 'voltage_Y':
-                    case 'voltage_z':
-                    case 'voltage_Z':
-                    case 'current_a':
-                    case 'current_b':
-                    case 'current_c':
-                    case 'current_X':
-                    case 'current_x':
-                    case 'current_y':
-                    case 'current_Y':
-                    case 'current_Z':
-                    case 'current_z':
-                    case 'power_a':
-                    case 'power_b':
-                    case 'power_c':
-                    case 'power_x':
-                    case 'power_X':
-                    case 'power_y':
-                    case 'power_Y':
-                    case 'power_z':
-                    case 'power_Z':
-                    case 'produced_energy':
-                    case 'power_reactive':
-                    case 'power_factor':
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileFloat($ProfileName, 'Electricity', '', ' ' . $expose['unit'], 0, 0, 0, 2);
-                        }
-                        break;
-                    case 'identify':
-                        $ProfileName = $expose['value_min'] . '_' . $expose['value_max'];
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Clock', '', ' seconds', $expose['value_min'], $expose['value_max'], 1, 0);
-                        }
-                        break;
-                    case 'gas_value':
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Gas', '', ' LEL', 0, 0, 1, 0);
-                        }
-                        break;
-                    case 'motor_speed':
-                        $ProfileName = $expose['value_min'] . '_' . $expose['value_max'];
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Speedo', '', ' ' . $expose['unit'], $expose['value_min'], $expose['value_max'], 1, 0);
-                        }
-                        break;
-                    case 'temperature_periodic_report':
-                    case 'humidity_periodic_report':
-                    case 'temperature_sensitivity':
-                    case 'humidity_sensitivity':
-                        $ProfileName = $expose['value_min'] . '_' . $expose['value_max'];
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Report', '', ' ' . $expose['unit'], $expose['value_min'], $expose['value_max'], 1, 0);
-                        }
-                        break;
-                    case 'min_temperature_alarm':
-                    case 'max_humidity_alarm':
-                    case 'min_humidity_alarm':
-                    case 'max_temperature_alarm':
-                        $ProfileName = $expose['value_min'] . '_' . $expose['value_max'];
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Alert', '', ' ' . $expose['unit'], $expose['value_min'], $expose['value_max'], 1, 0);
-                        }
-                        break;
-                    case 'error_status':
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Alert', '', '', 0, 100, 1, 0);
-                        }
-                        break;
-                    case 'cycle_irrigation_num_times':
-                        $ProfileName = $expose['value_min'] . '_' . $expose['value_max'];
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Clock', '', '', $expose['value_min'], $expose['value_max'], 1, 0);
-                        }
-                        break;
-                    case 'irrigation_end_time':
-                    case 'last_irrigation_duration':
-                    case 'irrigation_start_time':
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileFloat($ProfileName, 'Clock', '', ' ', ' ', 0, 0, 2);
-                        }
-                      break;
-                    case 'water_consumed':
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileFloat($ProfileName, 'Drops', '', ' L', ' ', 0, 0, 2);
-                        }
-                        break;
-                    case 'irrigation_target':
-                    case 'cycle_irrigation_interval':
-                        $ProfileName = $expose['value_min'] . '_' . $expose['value_max'];
-                        $ProfileName = str_replace(',', '.', $ProfileName);
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileFloat($ProfileName, 'Graph', '', ' ', ' ', $expose['value_min'], $expose['value_max'], 2);
-                        }
-                        break;
-                    case 'countdown_l2':
-                    case 'countdown_l1':
-                        $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                        $ProfileName = str_replace(',', '.', $ProfileName);
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Clock', '', ' ' . $expose['unit'], $expose['value_min'], $expose['value_max'], $expose['value_step'], 2);
-                        }
-                        break;
-                    case 'presence_timeout':
-                    case 'radar_range':
-                    case 'move_sensitivity':
-                    case 'small_detection_sensitivity':
-                    case 'small_detection_distance':
-                    case 'medium_motion_detection_distance':
-                    case 'medium_motion_detection_sensitivity':
-                    case 'large_motion_detection_distance':
-                    case 'large_motion_detection_sensitivity':
-                        $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                        $ProfileName = str_replace(',', '.', $ProfileName);
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileFloat($ProfileName, 'Motion', '', ' ' . $expose['unit'], $expose['value_min'], $expose['value_max'], $expose['value_step'], 2);
-                        }
-                        break;
-                    case 'distance':
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileFloat($ProfileName, 'Move', '', ' ', ' ', 0, 0, 2);
-                        }
-                      break;
-                    case 'requested_brightness_percent':
-                        $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                        $ProfileName = str_replace(',', '.', $ProfileName);
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileFloat($ProfileName, 'Intensity', '', ' %', $expose['value_min'], $expose['value_max'], 0, 0);
-                        }
-                      break;
-                    case 'requested_brightness_level':
-                        $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                        $ProfileName = str_replace(',', '.', $ProfileName);
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileFloat($ProfileName, 'Intensity', '', ' ', $expose['value_min'], $expose['value_max'], 0, 0);
-                        }
-                      break;
-                    case 'z_axis':
-                    case 'y_axis':
-                    case 'x_axis':
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileFloat($ProfileName, 'Shuffle', '', ' ', 0, 0, 0, 2);
-                        }
-                    break;
-                    case 'ac_frequency':
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileFloat($ProfileName, 'Information', '', ' ' . $expose['unit'], 0, 0, 0, 2);
-                        }
-                        break;
-                    case 'presence_sensitivity':
-                        $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                        $ProfileName = str_replace(',', '.', $ProfileName);
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileFloat($ProfileName, 'Intensity', '', ' min', $expose['value_min'], $expose['value_max'], $expose['value_step'], 0);
-                        }
-                      break;
-                    case 'sensitivity':
-                    $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                    $ProfileName = str_replace(',', '.', $ProfileName);
                     if (!IPS_VariableProfileExists($ProfileName)) {
-                        $this->RegisterProfileFloat($ProfileName, 'Intensity', '', ' min', $expose['value_min'], $expose['value_max'], 1, 0);
+                        $profileValues = [];
+                        foreach ($expose['values'] as $value) {
+                            $readableValue = ucwords(str_replace('_', ' ', $value));
+                            $translatedValue = $this->Translate($readableValue);
+                            if ($translatedValue === $readableValue) {
+                                $this->SendDebug(__FUNCTION__ . ':: Missing Translation', "Keine Übersetzung für Wert: $readableValue", 0);
+                            }
+                            $profileValues[] = [$value, $translatedValue, '', 0x00FF00]; // Beispiel für eine Standardfarbe
+                        }
+                        $this->RegisterProfileStringEx($ProfileName, 'Menu', '', '', $profileValues);
                     }
-                    break;
-                    case 'detection_distance_min':
-                    case 'detection_distance_max':
-                        $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                        $ProfileName = str_replace(',', '.', $ProfileName);
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileFloat($ProfileName, 'Distance', '', ' m', $expose['value_min'], $expose['value_max'], $expose['value_step'], 0);
-                        }
-                      break;
-                    case 'transmit_power':
-                        $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                        $ProfileName = str_replace(',', '.', $ProfileName);
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileFloat($ProfileName, 'Intensity', '', ' dBm', $expose['value_min'], $expose['value_max'], $expose['value_step'], 0);
-                        }
-                        break;
-                    case 'motion_sensitivity':
-                        $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                        $ProfileName = str_replace(',', '.', $ProfileName);
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileFloat($ProfileName, 'Motion', '', ' min', $expose['value_min'], $expose['value_max'], $expose['value_step'], 0);
-                        }
-                        break;
-                    case 'action_transaction':
-                    case 'power_outage_count':
-                    case 'action_rate':
-                    case 'action_level':
-                    case 'action_transition_time':
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Information', '', ' ', 0, 0, 0);
-                        }
-                        break;
-                    case 'error':
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Alert', '', ' ', 0, 0, 0);
-                        }
-                        break;
-                    case 'alarm_time':
-                        $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                        $ProfileName = str_replace(',', '.', $ProfileName);
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileFloat($ProfileName, 'Clock', '', ' min', $expose['value_min'], $expose['value_max'], $expose['value_step'], 0);
-                        }
-                        break;
-                    case 'soil_moisture':
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Drops', '', ' ' . $expose['unit'], 0, 0, 0);
-                        }
-                        break;
-                    case 'co':
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Gas', '', ' ' . $expose['unit'], 0, 0, 0);
-                        }
-                        break;
-                    case 'regulation_setpoint_offset':
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileFloat($ProfileName, 'Temperature', '', ' °C', $expose['value_min'], $expose['value_max'], 1);
-                        }
-                        break;
-                    case 'load_estimate':
-                    case 'fan_speed':
-                    case 'load_room_mean':
-                    case 'algorithm_scale_factor':
-                    case 'display_brightness':
-                        $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Intensity', '', ' ', $expose['value_min'], $expose['value_max'], 1);
-                        }
-                        break;
-                    case 'trigger_time':
-                        $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Clock', '', ' Minutes', $expose['value_min'], $expose['value_max'], 1);
-                        }
-                        break;
-                    case 'external_measured_room_sensor':
-                    case 'external_temperature_input':
-                        $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Temperature', '', ' °', $expose['value_min'], $expose['value_max'], 1);
-                        }
-                        break;
-                    case 'smoke_density_dbm':
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileFloat($ProfileName, 'Factory', '', ' ' . $expose['unit'], 0, 0, 0, 2);
-                        }
-                        break;
-                    case 'display_ontime':
-                        $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Sleep', '', ' ', $expose['value_min'], $expose['value_max'], 1);
-                        }
-                        break;
-                    case 'side':
-                    case 'angle_x':
-                    case 'angle_y':
-                    case 'angle_z':
-                        $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Shuffle', '', ' °', $expose['value_min'], $expose['value_max'], 1);
-                        }
-                            break;
-                    case 'boost_heating_countdown_time_set':
-                    case 'duration':
-                        $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Clock', '', ' S', $expose['value_min'], $expose['value_max'], 1);
-                        }
-                        break;
-                    case 'min_temperature':
-                    case 'max_temperature':
-                        $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Temperature', '', ' ' . $expose['unit'], $expose['value_min'], $expose['value_max'], 1);
-                        }
-                        break;
-                    case 'humidity_max':
-                    case 'humidity_min':
-                        $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Gauge', '', ' %', $expose['value_min'], $expose['value_max'], 1);
-                        }
-                        break;
-                    case 'temperature_max':
-                    case 'temperature_min':
-                    case 'eco_temperature':
-                        $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Temperature', '', ' °C', $expose['value_min'], $expose['value_max'], 1);
-                        }
-                        break;
-                    case 'duration_of_absence':
-                    case 'duration_of_attendance':
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Clock', '', ' ' . $expose['unit'], 0, 0, 0);
-                        }
-                        break;
-                    case 'brightness':
-                    case 'brightness_l1':
-                    case 'brightness_l2':
-                    case 'min_brightness_l1':
-                    case 'max_brightness_l1':
-                    case 'min_brightness_l2':
-                    case 'max_brightness_l2':
-                    case 'brightness_rgb':
-                    case 'brightness_cct':
-                    case 'brightness_white':
-                        $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                        $ProfileName = str_replace(',', '.', $ProfileName);
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Intensity', '', '%', $expose['value_min'], $expose['value_max'], 1);
-                        }
-                        break;
-                    case 'color_temp':
-                    case 'color_temp_rgb':
-                    case 'color_temp_cct':
-                    case 'color_temp_startup':
-                    case 'color_temp_startup_rgb':
-                    case 'color_temp_startup_cct':
-                    case 'action_color_temperature':
-                        $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                        $ProfileName = str_replace(',', '.', $ProfileName);
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Bulb', '', ' mired', $expose['value_min'], $expose['value_max'], 1);
-                        }
-                        break;
-                    case 'valve_position':
-                    case 'percent_state':
-                        $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                        $ProfileName = str_replace(',', '.', $ProfileName);
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Intensity', '', ' %', $expose['value_min'], $expose['value_max'], 1);
-                        }
-                        break;
-                    case 'remote_temperature':
-                    case 'current_heating_setpoint_auto':
-                    case 'current_heating_setpoint':
-                    case 'occupied_heating_setpoint':
-                    case 'occupied_heating_setpoint_scheduled':
-                        $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                        $ProfileName = str_replace(',', '.', $ProfileName);
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileFloat($ProfileName, 'Temperature', '', ' °C', $expose['value_min'], $expose['value_max'], $expose['value_step'], 1);
-                        }
-                        break;
-                    case 'linkquality':
-                        $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                        $ProfileName = str_replace(',', '.', $ProfileName);
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Intensity', '', ' lqi', $expose['value_min'], $expose['value_max'], 1);
-                        }
-                        break;
-                    case 'co2':
-                    case 'voc':
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Leaf', '', ' ' . $expose['unit'], 0, 0, 0);
-                        }
-                        break;
-                    case 'pm25':
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Leaf', '', ' ' . $expose['unit'], $expose['value_min'], $expose['value_max'], $expose['value_step']);
-                        }
-                        break;
-                    case 'occupancy_timeout':
-                        $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                        $ProfileName = str_replace(',', '.', $ProfileName);
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Clock', '', ' ' . $this->Translate('Seconds'), $expose['value_min'], $expose['value_max'], 0);
-                        }
-                        break;
-                    case 'boost_heating_countdown':
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Clock', '', ' ' . $this->Translate('Minutes'), 0, 0, 0);
-                        }
-                        break;
-                    case 'boost_time':
-                    case 'boost_timeset_countdown':
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Clock', '', ' ', $expose['value_min'], $expose['value_max'], 1);
-                        }
-                        break;
-                    case 'overload_protection':
-                        $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                        $ProfileName = str_replace(',', '.', $ProfileName);
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Electricity', '', ' ' . $this->Translate('Watt'), $expose['value_min'], $expose['value_max'], 0);
-                        }
-                        break;
-                    case 'strobe_duty_cycle':
-                        $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                        $ProfileName = str_replace(',', '.', $ProfileName);
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Clock', '', ' ', $expose['value_min'], $expose['value_max'], 0);
-                        }
-                        break;
-                    case 'region_id':
-                        $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                        $ProfileName = str_replace(',', '.', $ProfileName);
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'IPS', '', ' ', $expose['value_min'], $expose['value_max'], 0);
-                        }
-                        break;
-                    case 'action_duration':
-                    case 'action_transition_time':
-                    case 'calibration_time':
-                    case 'calibration_time_left':
-                    case 'calibration_time_right':
-                        $ProfileName .= '_' . $expose['unit'];
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileFloat($ProfileName, 'Clock', '', ' ' . $expose['unit'], 0, 0, 0, 2);
-                        }
-                        break;
-                    case 'radar_sensitivity':
-                        $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                        $ProfileName = str_replace(',', '.', $ProfileName);
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileInteger($ProfileName, 'Intensity', '', ' ', $expose['value_min'], $expose['value_max'], $expose['value_step']);
-                        }
-                        break;
-                    case 'target_distance':
-                        $ProfileName .= '_' . $expose['unit'];
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileFloat($ProfileName, 'Move', '', ' ' . $expose['unit'], 0, 0, 0, 2);
-                        }
-                        break;
-                    case 'minimum_range':
-                    case 'maximum_range':
-                        $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                        $ProfileName = str_replace(',', '.', $ProfileName);
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileFloat($ProfileName, 'Intensity', '', ' ' . $expose['unit'], $expose['value_min'], $expose['value_max'], $expose['value_step'], 2);
-                        }
-                        break;
-                    case 'deadzone_temperature':
-                    case 'max_temperature_limit':
-                        $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                        $ProfileName = str_replace(',', '.', $ProfileName);
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileFloat($ProfileName, 'Temperature', '', ' ' . $expose['unit'], $expose['value_min'], $expose['value_max'], $expose['value_step'], 2);
-                        }
-                        break;
-                    case 'detection_delay':
-                    case 'fading_time':
-                        $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileFloat($ProfileName, 'Clock', '', ' ' . $expose['unit'], $expose['value_min'], $expose['value_max'], $expose['value_step'], 2);
-                        }
-                        break;
-                    case 'detection_interval':
-                    case 'detfading_timeection_delay':
-                        $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileFloat($ProfileName, 'Clock', '', ' ' . $expose['unit'], $expose['value_min'], $expose['value_max'], $expose['value_step'], 1);
-                        }
-                        break;
-                    case 'max_temperature':
-                        $ProfileName .= $expose['value_min'] . '_' . $expose['value_max'];
-                        $ProfileName = str_replace(',', '.', $ProfileName);
-                        if (!IPS_VariableProfileExists($ProfileName)) {
-                            $this->RegisterProfileFloat($ProfileName, 'intensity', '', ' ' . $expose['unit'], $expose['value_min'], $expose['value_max'], 1);
-                        }
-                        break;
-                    default:
-                        $this->SendDebug(__FUNCTION__ . ':: Variableprofile missing', $ProfileName, 0);
-                        $this->SendDebug(__FUNCTION__ . ':: ProfileName Values', json_encode($expose['values']), 0);
-                        break;
+                } else {
+                    $this->SendDebug(__FUNCTION__ . ':: Variableprofile missing', $ProfileName, 0);
+                    $this->SendDebug(__FUNCTION__ . ':: ProfileName Values', json_encode($expose['values']), 0);
+                    return false;
                 }
                 break;
+
+            case 'numeric':
+                // Auslagern der numeric Logik in eine spezialisierte Funktion
+                return $this->registerNumericProfile($expose);
+
             default:
-                # code...
-                break;
+                $this->SendDebug(__FUNCTION__ . ':: Type not handled', $ProfileName, 0);
+                return false;
         }
-        return $ProfileName;
+    }
+    private function registerNumericProfile($expose) {
+        $ProfileName = 'Z2M.' . $expose['name'];
+        $min = $expose['value_min'] ?? 0;
+        $max = $expose['value_max'] ?? 0;
+        $fullRangeProfileName = $ProfileName . $min . '_' . $max;
+        $presetProfileName = $fullRangeProfileName . '_Presets';
+        $unit = isset($expose['unit']) ? ' ' . $expose['unit'] : '';
+
+        $this->SendDebug("registerNumericProfile", "ProfileName: $fullRangeProfileName, min: $min, max: $max, unit: $unit", 0);
+
+        if (!IPS_VariableProfileExists($fullRangeProfileName)) {
+            $this->RegisterProfileInteger($fullRangeProfileName, 'Bulb', '', $unit, $min, $max, 1);
+        }
+
+        if (isset($expose['presets']) && !empty($expose['presets'])) {
+            if (IPS_VariableProfileExists($presetProfileName)) {
+                IPS_DeleteVariableProfile($presetProfileName);
+            }
+            $this->RegisterProfileInteger($presetProfileName, 'Bulb', '', '', 0, 0, 0);
+            foreach ($expose['presets'] as $preset) {
+                $presetValue = $preset['value'];
+                $presetName = $this->Translate(ucwords(str_replace('_', ' ', $preset['name'])));
+
+                $this->SendDebug("Preset Info", "presetValue: $presetValue, presetName: $presetName", 0);
+
+                IPS_SetVariableProfileAssociation($presetProfileName, $presetValue, $presetName, '', 0xFFFFFF);
+            }
+        }
+
+        return ['mainProfile' => $fullRangeProfileName, 'presetProfile' => $presetProfileName];
     }
 
     private function mapExposesToVariables(array $exposes)
@@ -2979,20 +974,33 @@ trait Zigbee2MQTTHelper
                                                 $this->EnableAction('Z2M_BrightnessWhite');
                                             }
                                             break;
-                                        case 'color_temp':
-                                            //Color Temperature Mired
-                                            $ProfileName = $this->registerVariableProfile($feature);
-                                            if ($ProfileName != false) {
-                                                $this->RegisterVariableInteger('Z2M_ColorTemp', $this->Translate('Color Temperature'), $ProfileName);
-                                                $this->EnableAction('Z2M_ColorTemp');
-                                            }
-                                            //TODO: Color Temp Presets
-                                            // Color Temperature in Kelvin nicht automatisiert, deswegen nicht über die Funktion registerVariableProfile
+                                            case 'color_temp':
+                                                $profileData = $this->registerNumericProfile($feature);
+                                                $mainProfileName = $profileData['mainProfile'];
+                                                $presetProfileName = $profileData['presetProfile'];
+
+                                                $this->SendDebug("Variable Registration", "Main Profile: $mainProfileName, Preset Profile: $presetProfileName", 0);
+
+                                                if ($mainProfileName) {
+                                                    $this->RegisterVariableInteger('Z2M_ColorTemp', $this->Translate('Color Temperature'), $mainProfileName);
+                                                    $this->EnableAction('Z2M_ColorTemp');
+                                                    $this->SendDebug("Variable Registration", "Main Color Temp Variable Created with ID: $variableID", 0);
+
+                                                }
+
+                                                if ($presetProfileName) {
+                                                    $this->RegisterVariableInteger('Z2M_ColorTempPresets', $this->Translate('Color Temperature Presets'), $presetProfileName);
+                                                    $this->EnableAction('Z2M_ColorTempPresets');
+                                                    $this->SendDebug("Variable Registration", "Preset Color Temp Variable Created with ID: $presetVariableID", 0);
+                                                }
+
+                                            // Anlegen weiterer nicht-automatisierter Kelvin Temperaturvariablen
                                             if (!IPS_VariableProfileExists('Z2M.ColorTemperatureKelvin')) {
                                                 $this->RegisterProfileInteger('Z2M.ColorTemperatureKelvin', 'Intensity', '', '', 2000, 6535, 1);
                                             }
                                             $this->RegisterVariableInteger('Z2M_ColorTempKelvin', $this->Translate('Color Temperature Kelvin'), 'Z2M.ColorTemperatureKelvin');
                                             $this->EnableAction('Z2M_ColorTempKelvin');
+
                                             break;
                                         case 'color_temp_rgb':
                                             //Color Temperature Mired
