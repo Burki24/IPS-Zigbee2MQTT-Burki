@@ -650,14 +650,14 @@ trait Zigbee2MQTTHelper
         // private function OpenClose(bool $Value)
         // private function AutoManual(bool $Value)
 
-    // Ab hier keine Änderungen mehr
-    private function registerVariableProfile($expose) // Unverändert
+    private function registerVariableProfile($expose)
     {
         $ProfileName = 'Z2M.' . $expose['name'];
         $unit = isset($expose['unit']) ? ' ' . $expose['unit'] : '';
 
         switch ($expose['type']) {
             case 'binary':
+                // Sonderfall "consumer_connected". Alle anderen werden als Switch angelegt
                 switch ($expose['property']) {
                     case 'consumer_connected':
                         if (!IPS_VariableProfileExists($ProfileName)) {
@@ -677,19 +677,19 @@ trait Zigbee2MQTTHelper
                 if (array_key_exists('values', $expose)) {
                     sort($expose['values']); // Sortieren, um Konsistenz beim Hashing zu gewährleisten
                     $tmpProfileName = implode('', $expose['values']);
-                    $ProfileName .= '.' . dechex(crc32($tmpProfileName));
-
+                    $ProfileName .= '.' . dechex(crc32($tmpProfileName)); // Ergänzung um Individuelle Profile zu erhalten, wenn die Werte sich unterscheiden
                     if (!IPS_VariableProfileExists($ProfileName)) {
                         $profileValues = [];
                         foreach ($expose['values'] as $value) {
                             $readableValue = ucwords(str_replace('_', ' ', $value));
                             $translatedValue = $this->Translate($readableValue);
+                            // Debug-Ausgabe, wenn Werte nicht in /device/locale.json übersetzt wurden
                             if ($translatedValue === $readableValue) {
                                 $this->SendDebug(__FUNCTION__ . ':: Missing Translation', "Keine Übersetzung für Wert: $readableValue", 0);
                             }
-                            $profileValues[] = [$value, $translatedValue, '', 0x00FF00]; // Beispiel für eine Standardfarbe
+                            $profileValues[] = [$value, $translatedValue, '', 0x00FF00];
                         }
-                        $this->RegisterProfileStringEx($ProfileName, 'Menu', '', '', $profileValues);
+                        $this->RegisterProfileStringEx($ProfileName, 'Menu', '', '', $profileValues); // Profilerstellung mit Icon "Menu"
                     }
                 } else {
                     $this->SendDebug(__FUNCTION__ . ':: Variableprofile missing', $ProfileName, 0);
@@ -699,44 +699,43 @@ trait Zigbee2MQTTHelper
                 break;
 
             case 'numeric':
-                // Auslagern der numeric Logik in eine spezialisierte Funktion
-                return $this->registerNumericProfile($expose);
+                $ProfileName = 'Z2M.' . $expose['name'];
+                $min = $expose['value_min'] ?? 0;
+                $max = $expose['value_max'] ?? 0;
+                $step = $expose['value_step'] ?? 0; // wird zur Feststellung benötigt ob der Wert als Integer oder Float interpretiert werden muss
+                $fullRangeProfileName = $ProfileName . $min . '_' . $max;
+                $presetProfileName = $fullRangeProfileName . '_Presets'; // wenn presets im Payload angeboten werden, Erstellen eines zusätzlichen Preset-Profils
+                $unit = isset($expose['unit']) ? ' ' . $expose['unit'] : '';
 
+                $this->SendDebug("registerNumericProfile", "ProfileName: $fullRangeProfileName, min: $min, max: $max, unit: $unit, step: $step", 0);
+
+                if (!IPS_VariableProfileExists($fullRangeProfileName)) {
+                    // Prüfung ob der Schritt ein Dezimalwert ist
+                    if (is_float($step) || strpos((string)$step, '.') !== false) {
+                        $this->RegisterProfileFloat($fullRangeProfileName, '', '', $unit, $min, $max, $step);
+                    } else {
+                        $this->RegisterProfileInteger($fullRangeProfileName, '', '', $unit, $min, $max, $step);
+                    }
+                }
+                // Erstellung der Presets aus dem Payload in das Profil
+                if (isset($expose['presets']) && !empty($expose['presets'])) {
+                    if (IPS_VariableProfileExists($presetProfileName)) {
+                        IPS_DeleteVariableProfile($presetProfileName);
+                    }
+                    $this->RegisterProfileInteger($presetProfileName, 'Bulb', '', '', 0, 0, 0);
+                    foreach ($expose['presets'] as $preset) {
+                        $presetValue = $preset['value'];
+                        $presetName = $this->Translate(ucwords(str_replace('_', ' ', $preset['name'])));
+                        $this->SendDebug("Preset Info", "presetValue: $presetValue, presetName: $presetName", 0);
+                        IPS_SetVariableProfileAssociation($presetProfileName, $presetValue, $presetName, '', 0xFFFFFF);
+                    }
+                }
+                break;
+                return ['mainProfile' => $fullRangeProfileName, 'presetProfile' => $presetProfileName];
             default:
                 $this->SendDebug(__FUNCTION__ . ':: Type not handled', $ProfileName, 0);
                 return false;
         }
-    }
-    private function registerNumericProfile($expose) {
-        $ProfileName = 'Z2M.' . $expose['name'];
-        $min = $expose['value_min'] ?? 0;
-        $max = $expose['value_max'] ?? 0;
-        $fullRangeProfileName = $ProfileName . $min . '_' . $max;
-        $presetProfileName = $fullRangeProfileName . '_Presets';
-        $unit = isset($expose['unit']) ? ' ' . $expose['unit'] : '';
-
-        $this->SendDebug("registerNumericProfile", "ProfileName: $fullRangeProfileName, min: $min, max: $max, unit: $unit", 0);
-
-        if (!IPS_VariableProfileExists($fullRangeProfileName)) {
-            $this->RegisterProfileInteger($fullRangeProfileName, 'Bulb', '', $unit, $min, $max, 1);
-        }
-
-        if (isset($expose['presets']) && !empty($expose['presets'])) {
-            if (IPS_VariableProfileExists($presetProfileName)) {
-                IPS_DeleteVariableProfile($presetProfileName);
-            }
-            $this->RegisterProfileInteger($presetProfileName, 'Bulb', '', '', 0, 0, 0);
-            foreach ($expose['presets'] as $preset) {
-                $presetValue = $preset['value'];
-                $presetName = $this->Translate(ucwords(str_replace('_', ' ', $preset['name'])));
-
-                $this->SendDebug("Preset Info", "presetValue: $presetValue, presetName: $presetName", 0);
-
-                IPS_SetVariableProfileAssociation($presetProfileName, $presetValue, $presetName, '', 0xFFFFFF);
-            }
-        }
-
-        return ['mainProfile' => $fullRangeProfileName, 'presetProfile' => $presetProfileName];
     }
 
     private function mapExposesToVariables(array $exposes) // Unverändert
