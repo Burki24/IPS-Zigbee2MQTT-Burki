@@ -6,8 +6,11 @@ namespace Zigbee2MQTT;
 
 trait Zigbee2MQTTHelper
 {
-
     private $stateTypeMapping = [
+    // Gehört zu RequestAction
+    // Hier werden die Fälle behandelt, wo standard-Aktionen nicht funktionieren.
+    // boolean zu string, wenn ausser true und false andere Werte gesendet werden.
+    // numeric werden speziell formatiert, wenn ein spezielles Format gewünscht wird.
         'Z2M_ChildLock'                         => ['type' => 'lockunlock', 'dataType' =>'string'],
         'Z2M_StateWindow'                       => ['type' => 'openclose', 'dataType' =>'string'],
         'Z2M_AutoLock'                          => ['type' => 'automode', 'dataType' => 'string'],
@@ -28,6 +31,7 @@ trait Zigbee2MQTTHelper
     public function RequestAction($ident, $value)
     {
         // Behandle spezielle Fälle separat
+        // Fälle, wie z.B. die ganzen Farben, wo nicht einfach nur das $value gesetzt werden kann
         switch ($ident) {
         case 'Z2M_ColorTempPresets':
             $this->SendDebug(__FUNCTION__ . ' ColorTempPresets', $value, 0);
@@ -58,26 +62,34 @@ trait Zigbee2MQTTHelper
             return;
         }
         // Generelle Logik für die meisten anderen Fälle
+        // ermitteln des Variablen-Typs
         $variableID = $this->GetIDForIdent($ident);
         $variableInfo = IPS_GetVariable($variableID);
         $variableType = $variableInfo['VariableType'];
+
+        // Wandelt den Ident zum passenden Expose um
         $payloadKey = $this->convertIdentToPayloadKey($ident);
+
+        // konvertiert den Wert in ein für Z2MSet nutzbaren Wert
+        // Keine Unterscheidung mehr in strval($value), $value (numerisch), etc. mehr notwendig
         $payload = [$payloadKey => $this->convertStateBasedOnMapping($ident, $value, $variableType)];
+
+        // Erstellung des passenden Payloads und versand durch Z2MSet
         $payloadJSON = json_encode($payload, JSON_UNESCAPED_SLASHES);
         $this->Z2MSet($payloadJSON);
     }
 
-    public function getDeviceInfo()
+    public function getDeviceInfo() // Unverändert
     {
         $this->symconExtensionCommand('getDevice', $this->ReadPropertyString('MQTTTopic'));
     }
 
-    public function getGroupInfo()
+    public function getGroupInfo() // Unverändert
     {
         $this->symconExtensionCommand('getGroup', $this->ReadPropertyString('MQTTTopic'));
     }
 
-    public function ReceiveData($JSONString)
+    public function ReceiveData($JSONString) // Unverändert
     {
         if (!empty($this->ReadPropertyString('MQTTTopic'))) {
             $Buffer = json_decode($JSONString, true);
@@ -129,13 +141,13 @@ trait Zigbee2MQTTHelper
                             $this->RegisterVariableBoolean('Z2M_Update', $this->Translate('Update'), '');
                             $this->SetValue('Z2M_Update', $payload['update_available']);
                             $handled = true;
-                            return;
+                            break;
                         case 'scene':
                             $this->LogMessage('Please contact module developer. Undefined variable: scene', KL_WARNING);
                             //$this->RegisterVariableString('Z2M_Scene', $this->Translate('Scene'), '');
                             //$this->SetValue('Z2M_Scene', $payload['scene']);
                             $handled = true;
-                            return;
+                            break;
 
                         case 'voltage':
                             if ($payload['voltage'] > 400) { //Es gibt wahrscheinlich keine Zigbee Geräte mit über 400 Volt
@@ -144,29 +156,29 @@ trait Zigbee2MQTTHelper
                                 $this->SetValue('Z2M_Voltage', $payload['voltage']);
                             }
                             $handled = true;
-                            return;
+                            break;
                         case 'action_rate':
                             $this->RegisterVariableInteger('Z2M_ActionRate', $this->Translate('Action Rate'), $ProfileName);
                             $this->EnableAction('Z2M_ActionRate');
                             $this->SetValue('Z2M_ActionRate', $payload['action_rate']);
                             $handled = true;
-                            return;
+                            break;
                         case 'action_level':
                             $this->RegisterVariableInteger('Z2M_ActionLevel', $this->Translate('Action Level'), $ProfileName);
                             $this->EnableAction('Z2M_ActionLevel');
                             $this->SetValue('Z2M_ActionLevel', $payload['action_level']);
                             $handled = true;
-                            return;
+                            break;
                         case 'action_transition_time':
                             $this->RegisterVariableInteger('Z2M_ActionTransitionTime', $this->Translate('Action Transition Time'), $ProfileName);
                             $this->EnableAction('Z2M_ActionTransitionTime');
                             $this->SetValue('Z2M_ActionTransitionTime', $payload['action_transition_time']);
                             $handled = true;
-                            return;
+                            break;
                         case 'child_lock':
                             $this->handleStateChange('child_lock', 'Z2M_ChildLock', 'Child Lock', $payload, ['LOCK' => true, 'UNLOCK' => false]);
                             $handled = true;
-                            return;
+                            break;
                         case 'color':
                             if (is_array($value)) {
                                 if (isset($value['x']) && isset($value['y'])) {
@@ -182,7 +194,7 @@ trait Zigbee2MQTTHelper
                                 }
                             }
                             $handled = true;
-                            return;
+                            break;
                         case 'color_rgb':
                             if (isset($payload['color_rgb']) && is_array($payload['color_rgb'])) {
                                 $colorRgb = $payload['color_rgb'];
@@ -195,69 +207,69 @@ trait Zigbee2MQTTHelper
                                 $this->SetValue('Z2M_ColorRGB', hexdec($RGBColor));
                             }
                             $handled = true;
-                            return;
+                            break;
                         case 'color_temp_cct':
                             $this->SetValue('Z2M_ColorTempCCT', $payload['color_temp_cct']);
                             if ($payload['color_temp_cct'] > 0) {
                                 $this->SetValue('Z2M_ColorTempCCTKelvin', 1000000 / $payload['color_temp_cct']); //Convert to Kelvin
                             }
                             $handled = true;
-                            return;
+                            break;
                         case 'color_temp_rgb':
                             $this->SetValue('Z2M_ColorTempRGB', $payload['color_temp_rgb']);
                             if ($payload['color_temp_rgb'] > 0) {
                                 $this->SetValue('Z2M_ColorTempRGBKelvin', 1000000 / $payload['color_temp_rgb']); //Convert to Kelvin
                             }
                             $handled = true;
-                            re;
+                            break;
                         case 'color_temp':
                             $this->SetValue('Z2M_ColorTemp', $payload['color_temp']);
                             if ($payload['color_temp'] > 0) {
                                 $this->SetValue('Z2M_ColorTempKelvin', 1000000 / $payload['color_temp']); //Convert to Kelvin
                             }
                             $handled = true;
-                            return;
+                            break;
                         case 'brightness_rgb':
                             $this->EnableAction('Z2M_BrightnessRGB');
                             $this->SetValue('Z2M_BrightnessRGB', $payload['brightness_rgb']);
                             $handled = true;
-                            return;
+                            break;
                         case 'color_temp_startup_rgb':
                             $this->SetValue('Z2M_ColorTempStartupRGB', $payload['color_temp_startup_rgb']);
                             $this->EnableAction('Z2M_ColorTempStartupRGB');
                             $handled = true;
-                            return;
+                            break;
                         case 'color_temp_startup_cct':
                             $this->SetValue('Z2M_ColorTempStartupCCT', $payload['color_temp_startup_cct']);
                             $this->EnableAction('Z2M_ColorTempStartupCCT');
                             $handled = true;
-                            return;
+                            break;
                         case 'color_temp_startup':
                             $this->SetValue('Z2M_ColorTempStartup', $payload['color_temp_startup']);
                             $this->EnableAction('Z2M_ColorTempStartup');
                             $handled = true;
-                            return;
+                            break;
                         case 'state_rgb':
                             $this->handleStateChange('state_rgb', 'Z2M_StateRGB', 'State_rgb', $payload, );
                             $this->EnableAction('Z2M_StateRGB');
                             $handled = true;
-                            return;
+                            break;
                         case 'state_cct':
                             $this->handleStateChange('state_cct', 'Z2M_StateCCT', 'State_cct', $payload);
                             $this->EnableAction('Z2M_StateCCT');
                             $handled = true;
-                            return;
+                            break;
                         case 'last_seen':
                             $translate = $this->convertKeyToReadableFormat($key);
                             $this->RegisterVariableInteger('Z2M_LastSeen', $this->Translate($translate), '~UnixTimestamp');
                             $this->SetValue($ident, $value / 1000);
                             $handled = true;
-                            return;
+                            break;
                         case 'smoke_alarm_state':
                             $translate = $this->convertKeyToReadableFormat($key);
                             $this->handleStateChange($key, $ident, $translate, $payload);
                             $handled = true;
-                            return;
+                            break;
                     }
 
                     if (!$handled) {
@@ -266,15 +278,15 @@ trait Zigbee2MQTTHelper
                             case 0: // Boolean
                                 $value = filter_var($value, FILTER_VALIDATE_BOOLEAN);
                                 $this->SendDebug(__FUNCTION__, "Ident: $ident, Wert: $value, Typ: Boolean", 0);
-                                return;
+                                break;
                             case 1: // Integer
                                 $value = intval($value);
                                 $this->SendDebug(__FUNCTION__, "Ident: $ident, Wert: $value, Typ: Integer", 0);
-                                return;
+                                break;
                             case 2: // Float
                                 $value = floatval($value);
                                 $this->SendDebug(__FUNCTION__, "Ident: $ident, Wert: $value, Typ: Float", 0);
-                                return;
+                                break;
                             case 3: // String
                                 $this->SendDebug(__FUNCTION__, "Ident: $ident, Wert: " . json_encode($value) . ", Typ: String", 0);
                                 if (is_array($value)) {
@@ -285,7 +297,7 @@ trait Zigbee2MQTTHelper
                                     // Stellt sicher, dass der Wert ein String ist
                                     $value = strval($value);
                                 }
-                                return;
+                                break;
                         }
 
                         $this->SetValue($ident, $value);
@@ -352,7 +364,7 @@ trait Zigbee2MQTTHelper
         }
     }
 
-    public function Z2MSet($payload)
+    public function Z2MSet($payload) // Unverändert
     {
         $Data['DataID'] = '{043EA491-0325-4ADD-8FC2-A30C8EEB4D3F}';
         $Data['PacketType'] = 3;
@@ -366,7 +378,7 @@ trait Zigbee2MQTTHelper
         $this->SendDataToParent($DataJSON);
     }
 
-    protected function createVariableProfiles()
+    protected function createVariableProfiles() // Unverändert
     {
         /**
          * if (!IPS_VariableProfileExists('Z2M.Sensitivity')) {
@@ -492,7 +504,7 @@ trait Zigbee2MQTTHelper
         }
     }
 
-    protected function SetValue($ident, $value)
+    protected function SetValue($ident, $value) // Unverändert
     {
         if (@$this->GetIDForIdent($ident)) {
             $this->SendDebug('Info :: SetValue for ' . $ident, 'Value: ' . $value, 0);
@@ -501,9 +513,10 @@ trait Zigbee2MQTTHelper
             $this->SendDebug('Error :: No Expose for Value', 'Ident: ' . $ident, 0);
         }
     }
-    private function convertIdentToPayloadKey($ident)
+    private function convertIdentToPayloadKey($ident) // Neu
     {
         // Gehört zu RequestAction
+        // Wandelt den Ident zu einem gültigen Expose um
         $identWithoutPrefix = str_replace('Z2M_', '', $ident);
         $this->SendDebug('Info :: convertIdentToPayloadKey', 'Ident: '. $ident.'-> IdentWithoutPrefix: '. $identWithoutPrefix, 0);
         $payloadKey = strtolower(preg_replace('/([a-z])([A-Z])/', '$1_$2', $identWithoutPrefix));
@@ -511,7 +524,7 @@ trait Zigbee2MQTTHelper
         return $payloadKey;
     }
 
-    private function convertStateBasedOnMapping($key, $value, $variableType)
+    private function convertStateBasedOnMapping($key, $value, $variableType) // Neu
     {
         // Gehört zu RequestAction
         // Überprüfe zuerst das spezielle Mapping für den Schlüssel
@@ -523,6 +536,7 @@ trait Zigbee2MQTTHelper
                 return $this->convertState($value, $mapping['type']);
             }
             // Formatierung des Wertes basierend auf dem definierten Datentyp
+            // Verhindert "cannot autoconvert"-Fehler
             switch ($dataType) {
                 case 'string':
                     return strval($value);
@@ -536,6 +550,7 @@ trait Zigbee2MQTTHelper
             }
         }
         // Direkte Behandlung für boolesche Werte, wenn kein spezielles Mapping vorhanden ist
+        // Setzt true/false auf "ON"/"OFF"
         if ($variableType === 0) { // Boolean
             return $value ? 'ON' : 'OFF';
         }
@@ -543,10 +558,11 @@ trait Zigbee2MQTTHelper
         return is_numeric($value) ? $value : strval($value);
     }
 
-    private function convertState($value, $type)
+    private function convertState($value, $type) // Neu
     {
         // Gehört zu RequestAction
         // Erweiterte Zustandsmappings
+        // Setzt ankommende Werte auf true/false zur Nutzung als boolean in Symcon
         $stateMappings = [
             'onoff'      => ['ON', 'OFF'],
             'openclose'  => ['OPEN', 'CLOSE'],
@@ -563,13 +579,15 @@ trait Zigbee2MQTTHelper
             return $value ? 'true' : 'false';
         }
     }
-    private function handleStateChange($payloadKey, $valueId, $debugTitle, $Payload, $stateMapping = null)
+    private function handleStateChange($payloadKey, $valueId, $debugTitle, $payload, $stateMapping = null)
     {
-        if (array_key_exists($payloadKey, $Payload)) {
-            $state = $Payload[$payloadKey];
+        // Gehört zu ReceiveData
+        if (array_key_exists($payloadKey, $payload)) {
+            $state = $payload[$payloadKey];
             if ($stateMapping === null) {
                 $stateMapping = ['ON' => true, 'OFF' => false];
             }
+            // Prüfung stateMapping
             if (array_key_exists($state, $stateMapping)) {
                 $this->SetValue($valueId, $stateMapping[$state]);
             } else {
@@ -578,7 +596,7 @@ trait Zigbee2MQTTHelper
         }
     }
 
-    private function setColor(int $color, string $mode, string $Z2MMode = 'color')
+    private function setColor(int $color, string $mode, string $Z2MMode = 'color') // Unverändert
     {
         switch ($mode) {
             case 'cie':
@@ -625,7 +643,15 @@ trait Zigbee2MQTTHelper
         }
     }
 
-    private function registerVariableProfile($expose)
+    // Folgende Funktionen entfallen durch das neue RequestAction:
+        // private function OnOff(bool $Value)
+        // private function ValveState(bool $Value)
+        // private function LockUnlock(bool $Value)
+        // private function OpenClose(bool $Value)
+        // private function AutoManual(bool $Value)
+
+    // Ab hier keine Änderungen mehr
+    private function registerVariableProfile($expose) // Unverändert
     {
         $ProfileName = 'Z2M.' . $expose['name'];
         $unit = isset($expose['unit']) ? ' ' . $expose['unit'] : '';
@@ -636,8 +662,8 @@ trait Zigbee2MQTTHelper
                     case 'consumer_connected':
                         if (!IPS_VariableProfileExists($ProfileName)) {
                             $this->RegisterProfileBooleanEx($ProfileName, 'Plug', '', '', [
-                                [false, $this->Translate('not connected'), '', 0xFF0000],
-                                [true, $this->Translate('connected'), '', 0x00FF00]
+                                [false, $this->Translate('not connected'),  '', 0xFF0000],
+                                [true, $this->Translate('connected'),  '', 0x00FF00]
                             ]);
                         }
                         break;
@@ -713,7 +739,7 @@ trait Zigbee2MQTTHelper
         return ['mainProfile' => $fullRangeProfileName, 'presetProfile' => $presetProfileName];
     }
 
-    private function mapExposesToVariables(array $exposes)
+    private function mapExposesToVariables(array $exposes) // Unverändert
     {
         $missedVariables = [];
         $missedVariables['composite'] = [];
