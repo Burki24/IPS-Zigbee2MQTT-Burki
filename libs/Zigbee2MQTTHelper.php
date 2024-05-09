@@ -738,60 +738,53 @@ trait Zigbee2MQTTHelper
             return ['mainProfile' => $fullRangeProfileName, 'presetProfile' => $presetProfileName];
         }
 
-    private function mapExposesToVariables(array $exposes)
-    {
-        foreach ($exposes as $expose) {
-            if (!isset($expose['property'])) {
-                $this->SendDebug(__FUNCTION__ . ':: Missing property key', json_encode($expose), 0);
-                continue; // Skip this expose if the property key is missing
-            }
+        private function mapExposesToVariables(array $exposes)
+        {
+            foreach ($exposes as $expose) {
+                if (!isset($expose['property'])) {
+                    $this->SendDebug(__FUNCTION__ . ':: Missing property key', json_encode($expose), 0);
+                    continue; // Überspringt dieses Expose, wenn der 'property'-Schlüssel fehlt
+                }
 
-            $ident = $this->convertKeyToIdent($expose['property']);
-            $variableID = $this->GetIDForIdent($ident);
-
-            if (!$variableID) {
-                // Variable not registered yet, attempt to register it based on its type
+                $ident = $this->convertKeyToIdent($expose['property']);
+                $translation = $this->Translate($expose['label']);
                 $profileResult = $this->registerVariableProfile($expose);
                 if (!$profileResult) {
                     $this->SendDebug(__FUNCTION__ . ':: Profile creation failed', json_encode($expose), 0);
                     continue; // Skip this expose if profile creation fails
                 }
 
-                $translation = $this->Translate($expose['label']);
-                $profileName = $profileResult['mainProfile'] ?? $profileResult; // Adjusted to handle both cases
+                $profileName = is_array($profileResult) ? $profileResult['mainProfile'] : $profileResult;
                 $variableID = $this->registerVariable($ident, $translation, $profileName, $expose['type'], $expose);
 
-                if (!$variableID) {
-                    $this->SendDebug(__FUNCTION__ . ':: Failed to create or get variable ID', 'Ident: ' . $ident, 0);
-                    continue;
-                }
-            }
-
-            if (isset($expose['access']) && ($expose['access'] & 0b010)) {
-                $this->EnableAction($variableID);
-            }
-        }
-    }
-
-    private function registerVariable($ident, $translation, $profileName, $featureType, $expose)
-    {
-        switch ($featureType) {
-            case 'numeric':
-                $step = $expose['value_step'] ?? 0;
-                if (is_float($step) || strpos((string)$step, '.') !== false) {
-                    $this->RegisterVariableFloat($variableID, $translation, $profileName);
+                if ($variableID) {
+                    if (isset($expose['access']) && ($expose['access'] & 0b010)) {
+                        $this->EnableAction($variableID);
+                    }
                 } else {
-                    $this->RegisterVariableInteger($variableID, $translation, $profileName);
+                    $this->SendDebug(__FUNCTION__, 'Failed to create variable with ident: ' . $ident, 0);
                 }
-                break;
-            case 'binary':
-                $this->RegisterVariableBoolean($variableID, $translation, $profileName);
-                break;
-            case 'enum':
-                $this->RegisterVariableString($variableID, $translation, $profileName);
-                break;
-            default:
-                $this->SendDebug(__FUNCTION__ . ':: Unsupported type', $featureType, 0);
+            }
         }
-    }
+
+        private function registerVariable($ident, $translation, $profileName, $featureType, $expose)
+        {
+            switch ($featureType) {
+                case 'numeric':
+                    $step = $expose['value_step'] ?? 0;
+                    if (is_float($step) || strpos((string)$step, '.') !== false) {
+                        return $this->RegisterVariableFloat($ident, $translation, $profileName);
+                    } else {
+                        return $this->RegisterVariableInteger($ident, $translation, $profileName);
+                    }
+                    break;
+                case 'binary':
+                    return $this->RegisterVariableBoolean($ident, $translation, $profileName);
+                case 'enum':
+                    return $this->RegisterVariableString($ident, $translation, $profileName);
+                default:
+                    $this->SendDebug(__FUNCTION__ . ':: Unsupported type', $featureType, 0);
+                    return false;
+            }
+        }
 }
