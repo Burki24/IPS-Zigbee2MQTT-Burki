@@ -743,22 +743,24 @@ trait Zigbee2MQTTHelper
         foreach ($exposes as $expose) {
             if (!isset($expose['property'])) {
                 $this->SendDebug(__FUNCTION__ . ':: Missing property key', json_encode($expose), 0);
-                continue; // Überspringt dieses Expose, wenn der 'property'-Schlüssel fehlt
+                continue; // Skip this expose if the property key is missing
             }
 
             $ident = $this->convertKeyToIdent($expose['property']);
             $variableID = $this->GetIDForIdent($ident);
 
             if (!$variableID) {
-                // Variable noch nicht registriert, also erstelle sie basierend auf ihrem Typ
-                $translation = $this->Translate($expose['label']);
+                // Variable not registered yet, attempt to register it based on its type
                 $profileResult = $this->registerVariableProfile($expose);
-                if ($profileResult === false) {
+                if (!$profileResult) {
                     $this->SendDebug(__FUNCTION__ . ':: Profile creation failed', json_encode($expose), 0);
                     continue; // Skip this expose if profile creation fails
                 }
-                $profileName = is_array($profileResult) ? $profileResult['mainProfile'] : $profileResult;
+
+                $translation = $this->Translate($expose['label']);
+                $profileName = $profileResult['mainProfile'] ?? $profileResult; // Adjusted to handle both cases
                 $variableID = $this->registerVariable($ident, $translation, $profileName, $expose['type'], $expose);
+
                 if (!$variableID) {
                     $this->SendDebug(__FUNCTION__ . ':: Failed to create or get variable ID', 'Ident: ' . $ident, 0);
                     continue;
@@ -771,7 +773,7 @@ trait Zigbee2MQTTHelper
         }
     }
 
-    private function registerVariable($variableID, $translation, $profileName, $featureType, $expose)
+    private function registerVariable($ident, $translation, $profileName, $featureType, $expose)
     {
         switch ($featureType) {
             case 'numeric':
