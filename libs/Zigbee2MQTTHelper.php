@@ -750,24 +750,20 @@ trait Zigbee2MQTTHelper
             $variableID = $this->GetIDForIdent($ident);
 
             if (!$variableID) {
-                // Wenn keine ID gefunden wird, versuchen wir, die Variable zu registrieren
-                $variableID = $this->registerVariable($ident, $expose['type'], $expose);
+                // Variable noch nicht registriert, also erstelle sie basierend auf ihrem Typ
+                $translation = $this->Translate($expose['label']);
+                $profileResult = $this->registerVariableProfile($expose);
+                if ($profileResult === false) {
+                    $this->SendDebug(__FUNCTION__ . ':: Profile creation failed', json_encode($expose), 0);
+                    continue; // Skip this expose if profile creation fails
+                }
+                $profileName = is_array($profileResult) ? $profileResult['mainProfile'] : $profileResult;
+                $variableID = $this->registerVariable($ident, $translation, $profileName, $expose['type'], $expose);
                 if (!$variableID) {
                     $this->SendDebug(__FUNCTION__ . ':: Failed to create or get variable ID', 'Ident: ' . $ident, 0);
                     continue;
                 }
             }
-
-            $translation = $this->Translate($expose['label']);
-            $profileResult = $this->registerVariableProfile($expose);
-
-            if ($profileResult === false) {
-                $this->SendDebug(__FUNCTION__ . ':: Profile creation failed', json_encode($expose), 0);
-                continue; // Skip this expose if profile creation fails
-            }
-
-            // $profileName = is_array($profileResult) ? $profileResult['mainProfile'] : $profileResult;
-            // $this->updateVariable($variableID, $translation, $profileName, $expose['type'], $expose);
 
             if (isset($expose['access']) && ($expose['access'] & 0b010)) {
                 $this->EnableAction($variableID);
@@ -787,6 +783,8 @@ trait Zigbee2MQTTHelper
                 }
                 break;
             case 'binary':
+                $this->RegisterVariableBoolean($variableID, $translation, $profileName);
+                break;
             case 'enum':
                 $this->RegisterVariableString($variableID, $translation, $profileName);
                 break;
