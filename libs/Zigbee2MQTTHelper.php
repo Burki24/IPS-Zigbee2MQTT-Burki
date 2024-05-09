@@ -750,10 +750,10 @@ trait Zigbee2MQTTHelper
             $variableID = $this->GetIDForIdent($ident);
 
             if (!$variableID) {
-                // Versuche, die Variable zu erstellen, falls sie nicht existiert
-                $variableID = $this->CreateVariable($ident, $expose['type']);
+                // Wenn keine ID gefunden wird, versuchen wir, die Variable zu registrieren
+                $variableID = $this->registerVariable($ident, $expose['type'], $expose);
                 if (!$variableID) {
-                    $this->SendDebug(__FUNCTION__ . ':: Failed to create variable ID', 'Ident: ' . $ident, 0);
+                    $this->SendDebug(__FUNCTION__ . ':: Failed to create or get variable ID', 'Ident: ' . $ident, 0);
                     continue;
                 }
             }
@@ -766,8 +766,8 @@ trait Zigbee2MQTTHelper
                 continue; // Skip this expose if profile creation fails
             }
 
-            $profileName = is_array($profileResult) ? $profileResult['mainProfile'] : $profileResult;
-            $this->registerVariable($variableID, $translation, $profileName, $expose['type'], $expose);
+            // $profileName = is_array($profileResult) ? $profileResult['mainProfile'] : $profileResult;
+            // $this->updateVariable($variableID, $translation, $profileName, $expose['type'], $expose);
 
             if (isset($expose['access']) && ($expose['access'] & 0b010)) {
                 $this->EnableAction($variableID);
