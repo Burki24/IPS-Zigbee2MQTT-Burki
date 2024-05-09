@@ -746,9 +746,14 @@ trait Zigbee2MQTTHelper
                 continue; // Überspringt dieses Expose, wenn der 'property'-Schlüssel fehlt
             }
 
-            // Transformation von 'property' zu einem Identifikator
-            $ident = 'Z2M_' . implode('', array_map('ucfirst', explode('_', $expose['property'])));
+            // Verwendung der convertKeyToIdent Funktion, um den Ident zu generieren
+            $ident = $this->convertKeyToIdent($expose['property']);
             $variableID = @$this->GetIDForIdent($ident);
+
+            if (!$variableID) {
+                $this->SendDebug(__FUNCTION__ . ':: Failed to get variable ID', 'Ident: ' . $ident, 0);
+                continue; // Überspringt, wenn keine ID gefunden wurde
+            }
 
             $translation = $this->Translate($expose['label']);
             $profileResult = $this->registerVariableProfile($expose);
@@ -758,13 +763,9 @@ trait Zigbee2MQTTHelper
                 continue; // Skip this expose if profile creation fails
             }
 
-            // Prepare profile name for variable registration based on type
             $profileName = is_array($profileResult) ? $profileResult['mainProfile'] : $profileResult;
-
-            // Register the variable based on the type
             $this->registerVariable($variableID, $translation, $profileName, $expose['type'], $expose);
 
-            // Enable action if the variable is writable
             if (isset($expose['access']) && ($expose['access'] & 0b010)) {
                 $this->EnableAction($variableID);
             }
