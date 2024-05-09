@@ -746,13 +746,16 @@ trait Zigbee2MQTTHelper
                 continue; // Überspringt dieses Expose, wenn der 'property'-Schlüssel fehlt
             }
 
-            // Verwendung der convertKeyToIdent Funktion, um den Ident zu generieren
             $ident = $this->convertKeyToIdent($expose['property']);
-            $variableID = @$this->GetIDForIdent($ident);
+            $variableID = $this->GetIDForIdent($ident);
 
             if (!$variableID) {
-                $this->SendDebug(__FUNCTION__ . ':: Failed to get variable ID', 'Ident: ' . $ident, 0);
-                continue; // Überspringt, wenn keine ID gefunden wurde
+                // Versuche, die Variable zu erstellen, falls sie nicht existiert
+                $variableID = $this->CreateVariable($ident, $expose['type']);
+                if (!$variableID) {
+                    $this->SendDebug(__FUNCTION__ . ':: Failed to create variable ID', 'Ident: ' . $ident, 0);
+                    continue;
+                }
             }
 
             $translation = $this->Translate($expose['label']);
