@@ -650,67 +650,93 @@ trait Zigbee2MQTTHelper
         // private function OpenClose(bool $Value)
         // private function AutoManual(bool $Value)
 
-    private function registerVariableProfile($expose)
-    {
-        $ProfileName = 'Z2M.' . $expose['name']; // Stellt sicher, dass das Prefix 'Z2M.' verwendet wird
+        private function registerVariableProfile($expose)
+        {
+            $ProfileName = 'Z2M.' . $expose['name'];
+            $unit = isset($expose['unit']) ? ' ' . $expose['unit'] : '';
 
-        switch ($expose['type']) {
-            case 'binary':
-                if ($expose['property'] === 'consumer_connected') {
-                    if (!IPS_VariableProfileExists($ProfileName)) {
-                        $this->RegisterProfileBooleanEx($ProfileName, 'Plug', '', '', [
-                            [false, $this->Translate('not connected'), '', 0xFF0000],
-                            [true, $this->Translate('connected'), '', 0x00FF00]
-                        ]);
-                    }
-                } else {
-                    $this->SendDebug(__FUNCTION__ . ':: Variable profile missing', $ProfileName, 0);
-                }
-                break;
-
-            case 'enum':
-                if (array_key_exists('values', $expose)) {
-                    sort($expose['values']); // Sortieren, um Konsistenz beim Hashing zu gewährleisten
-                    $tmpProfileName = implode('', $expose['values']);
-                    $ProfileName .= '.' . dechex(crc32($tmpProfileName)); // Ergänzt um individuelle Profile zu erhalten
-                    if (!IPS_VariableProfileExists($ProfileName)) {
-                        $profileValues = [];
-                        foreach ($expose['values'] as $value) {
-                            $readableValue = ucwords(str_replace('_', ' ', $value));
-                            $translatedValue = $this->Translate($readableValue);
-                            if ($translatedValue === $readableValue) {
-                                $this->SendDebug(__FUNCTION__ . ':: Missing Translation', "Keine Übersetzung für Wert: $readableValue", 0);
+            switch ($expose['type']) {
+                case 'binary':
+                    switch ($expose['property']) {
+                        case 'consumer_connected':
+                            if (!IPS_VariableProfileExists($ProfileName)) {
+                                $this->RegisterProfileBooleanEx($ProfileName, 'Plug', '', '', [
+                                    [false, $this->Translate('not connected'), '', 0xFF0000],
+                                    [true, $this->Translate('connected'), '', 0x00FF00]
+                                ]);
                             }
-                            $profileValues[] = [$value, $translatedValue, '', 0x00FF00];
+                            break;
+                        default:
+                            $this->SendDebug(__FUNCTION__ . ':: Variableprofile missing', $ProfileName, 0);
+                            break;
+                    }
+                    break;
+
+                case 'enum':
+                    if (array_key_exists('values', $expose)) {
+                        sort($expose['values']); // Sortieren, um Konsistenz beim Hashing zu gewährleisten
+                        $tmpProfileName = implode('', $expose['values']);
+                        $ProfileName .= '.' . dechex(crc32($tmpProfileName));
+
+                        if (!IPS_VariableProfileExists($ProfileName)) {
+                            $profileValues = [];
+                            foreach ($expose['values'] as $value) {
+                                $readableValue = ucwords(str_replace('_', ' ', $value));
+                                $translatedValue = $this->Translate($readableValue);
+                                if ($translatedValue === $readableValue) {
+                                    $this->SendDebug(__FUNCTION__ . ':: Missing Translation', "Keine Übersetzung für Wert: $readableValue", 0);
+                                }
+                                $profileValues[] = [$value, $translatedValue, '', 0x00FF00]; // Beispiel für eine Standardfarbe
+                            }
+                            $this->RegisterProfileStringEx($ProfileName, 'Menu', '', '', $profileValues);
                         }
-                        $this->RegisterProfileStringEx($ProfileName, 'Menu', '', '', $profileValues);
-                    }
-                } else {
-                    $this->SendDebug(__FUNCTION__ . ':: Variable profile missing', $ProfileName, 0);
-                    return false;
-                }
-                break;
-
-            case 'numeric':
-                $fullRangeProfileName = $ProfileName . $expose['value_min'] . '_' . $expose['value_max'];
-                if (!IPS_VariableProfileExists($fullRangeProfileName)) {
-                    $step = $expose['value_step'] ?? 1; // Standardmäßig 1, wenn nicht definiert
-                    $unit = isset($expose['unit']) ? ' ' . $expose['unit'] : '';
-                    if (is_float($step) || strpos((string)$step, '.') !== false) {
-                        $this->RegisterProfileFloat($fullRangeProfileName, '', '', $unit, $expose['value_min'], $expose['value_max'], $step);
                     } else {
-                        $this->RegisterProfileInteger($fullRangeProfileName, '', '', $unit, $expose['value_min'], $expose['value_max'], $step);
+                        $this->SendDebug(__FUNCTION__ . ':: Variableprofile missing', $ProfileName, 0);
+                        $this->SendDebug(__FUNCTION__ . ':: ProfileName Values', json_encode($expose['values']), 0);
+                        return false;
                     }
-                }
-                break;
+                    break;
 
-            default:
-                $this->SendDebug(__FUNCTION__ . ':: Type not handled', $ProfileName, 0);
-                return false;
+                case 'numeric':
+                    // Auslagern der numeric Logik in eine spezialisierte Funktion
+                    return $this->registerNumericProfile($expose);
+
+                default:
+                    $this->SendDebug(__FUNCTION__ . ':: Type not handled', $ProfileName, 0);
+                    return false;
+            }
         }
+        private function registerNumericProfile($expose) {
+            $ProfileName = 'Z2M.' . $expose['name'];
+            $min = $expose['value_min'] ?? 0;
+            $max = $expose['value_max'] ?? 0;
+            $fullRangeProfileName = $ProfileName . $min . '_' . $max;
+            $presetProfileName = $fullRangeProfileName . '_Presets';
+            $unit = isset($expose['unit']) ? ' ' . $expose['unit'] : '';
 
-        return $ProfileName;
-    }
+            $this->SendDebug("registerNumericProfile", "ProfileName: $fullRangeProfileName, min: $min, max: $max, unit: $unit", 0);
+
+            if (!IPS_VariableProfileExists($fullRangeProfileName)) {
+                $this->RegisterProfileInteger($fullRangeProfileName, 'Bulb', '', $unit, $min, $max, 1);
+            }
+
+            if (isset($expose['presets']) && !empty($expose['presets'])) {
+                if (IPS_VariableProfileExists($presetProfileName)) {
+                    IPS_DeleteVariableProfile($presetProfileName);
+                }
+                $this->RegisterProfileInteger($presetProfileName, 'Bulb', '', '', 0, 0, 0);
+                foreach ($expose['presets'] as $preset) {
+                    $presetValue = $preset['value'];
+                    $presetName = $this->Translate(ucwords(str_replace('_', ' ', $preset['name'])));
+
+                    $this->SendDebug("Preset Info", "presetValue: $presetValue, presetName: $presetName", 0);
+
+                    IPS_SetVariableProfileAssociation($presetProfileName, $presetValue, $presetName, '', 0xFFFFFF);
+                }
+            }
+
+            return ['mainProfile' => $fullRangeProfileName, 'presetProfile' => $presetProfileName];
+        }
 
     private function mapExposesToVariables(array $exposes)
     {
