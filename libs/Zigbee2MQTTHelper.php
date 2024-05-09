@@ -777,9 +777,9 @@ trait Zigbee2MQTTHelper
             case 'numeric':
                 $step = $expose['value_step'] ?? 0;
                 if (is_float($step) || strpos((string)$step, '.') !== false) {
-                    $this->RegisterVariableFloat($variableID, $translation, $profileName, $expose['value_min'], $expose['value_max'], $step);
+                    $this->RegisterVariableFloat($variableID, $translation, $profileName);
                 } else {
-                    $this->RegisterVariableInteger($variableID, $translation, $profileName, $expose['value_min'], $expose['value_max'], $step);
+                    $this->RegisterVariableInteger($variableID, $translation, $profileName);
                 }
                 break;
             case 'binary':
