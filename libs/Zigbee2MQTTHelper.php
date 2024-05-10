@@ -654,6 +654,7 @@ trait Zigbee2MQTTHelper
     {
         $ProfileName = 'Z2M.' . $expose['name'];
         $unit = isset($expose['unit']) ? ' ' . $expose['unit'] : '';
+        $unitsThatRequireFloat = ['V', 'W', 'A', '°C', 'kWh', 'm', 'cm', 'mm', 'ft', 'in', 'l', 'ml', 'g', 'kg', 'psi', 'Pa', 'hPa', 'bar', 'm/s', 'km/h', 'mph', '°', 'rad', 'Hz', 'dB', 'lux', '%', 'ppm', 'ppb'];
 
         switch ($expose['type']) {
             case 'binary':
@@ -700,8 +701,6 @@ trait Zigbee2MQTTHelper
             case 'numeric':
                 $fullRangeProfileName = $ProfileName . ($expose['value_min'] ?? '') . '_' . ($expose['value_max'] ?? '');
                 $presetProfileName = $fullRangeProfileName . '_Presets';
-                $unitsThatRequireFloat = ['W', 'V', 'A', '°C'];  // Liste der Einheiten, die Float benötigen
-
                 if (!IPS_VariableProfileExists($fullRangeProfileName)) {
                     if (in_array(trim($unit), $unitsThatRequireFloat) || isset($expose['value_step']) && is_float($expose['value_step'])) {
                         // Erstelle ein Float-Profil, wenn die Einheit eine Dezimaleinheit ist oder 'step' ein Float ist
