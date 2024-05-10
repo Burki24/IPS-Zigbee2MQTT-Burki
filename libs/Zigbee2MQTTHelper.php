@@ -779,7 +779,7 @@ trait Zigbee2MQTTHelper
                     // Bestimme, ob eine Float-Variable basierend auf der Einheit angelegt werden soll
                     $unit = $expose['unit'] ?? '';
                     $step = $expose['value_step'] ?? 1;
-                    $unitsThatRequireFloat = ['W', 'V', 'A', '°C'];  // Liste der Einheiten, die Float benötigen
+                    $unitsThatRequireFloat = ['V', 'W', 'A', '°C', 'kWh', 'm', 'cm', 'mm', 'ft', 'in', 'l', 'ml', 'g', 'kg', 'psi', 'Pa', 'hPa', 'bar', 'm/s', 'km/h', 'mph', '°', 'rad', 'Hz', 'dB', 'lux', '%', 'ppm', 'ppb'];
 
                     if (in_array($unit, $unitsThatRequireFloat) || is_float($step) || strpos((string)$step, '.') !== false) {
                         // Wenn die Einheit in der Liste ist oder 'step' ein Dezimalwert ist, erstelle eine Float-Variable
