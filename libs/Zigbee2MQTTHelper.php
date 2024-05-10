@@ -697,36 +697,37 @@ trait Zigbee2MQTTHelper
                 }
                 break;
 
-                case 'numeric':
-                    $fullRangeProfileName = $ProfileName . ($expose['value_min'] ?? '') . '_' . ($expose['value_max'] ?? '');
-                    $presetProfileName = $fullRangeProfileName . '_Presets';
+            case 'numeric':
+                $fullRangeProfileName = $ProfileName . ($expose['value_min'] ?? '') . '_' . ($expose['value_max'] ?? '');
+                $presetProfileName = $fullRangeProfileName . '_Presets';
+                $unitsThatRequireFloat = ['W', 'V', 'A', '°C'];  // Liste der Einheiten, die Float benötigen
 
-                    if (!IPS_VariableProfileExists($fullRangeProfileName)) {
-                        if (in_array(trim($unit), $unitsThatRequireFloat) || isset($expose['value_step']) && is_float($expose['value_step'])) {
-                            // Erstelle ein Float-Profil, wenn die Einheit eine Dezimaleinheit ist oder 'step' ein Float ist
-                            $this->RegisterProfileFloat($fullRangeProfileName, 'Bulb', '', $unit, $expose['value_min'] ?? 0, $expose['value_max'] ?? 0, $expose['value_step'] ?? 0.1);
-                        } else {
-                            // Andernfalls erstelle ein Integer-Profil
-                            $this->RegisterProfileInteger($fullRangeProfileName, 'Bulb', '', $unit, $expose['value_min'] ?? 0, $expose['value_max'] ?? 0, 1);
-                        }
+                if (!IPS_VariableProfileExists($fullRangeProfileName)) {
+                    if (in_array(trim($unit), $unitsThatRequireFloat) || isset($expose['value_step']) && is_float($expose['value_step'])) {
+                        // Erstelle ein Float-Profil, wenn die Einheit eine Dezimaleinheit ist oder 'step' ein Float ist
+                        $this->RegisterProfileFloat($fullRangeProfileName, 'Bulb', '', $unit, $expose['value_min'] ?? 0, $expose['value_max'] ?? 0, $expose['value_step'] ?? 0.1);
+                    } else {
+                        // Andernfalls erstelle ein Integer-Profil
+                        $this->RegisterProfileInteger($fullRangeProfileName, 'Bulb', '', $unit, $expose['value_min'] ?? 0, $expose['value_max'] ?? 0, 1);
                     }
+                }
 
-                    if (isset($expose['presets']) && !empty($expose['presets'])) {
-                        if (IPS_VariableProfileExists($presetProfileName)) {
-                            IPS_DeleteVariableProfile($presetProfileName);
-                        }
-                        $this->RegisterProfileInteger($presetProfileName, 'Bulb', '', '', 0, 0, 0);
-                        foreach ($expose['presets'] as $preset) {
-                            $presetValue = $preset['value'];
-                            $presetName = $this->Translate(ucwords(str_replace('_', ' ', $preset['name'])));
-                            IPS_SetVariableProfileAssociation($presetProfileName, $presetValue, $presetName, '', 0xFFFFFF);
-                        }
+                if (isset($expose['presets']) && !empty($expose['presets'])) {
+                    if (IPS_VariableProfileExists($presetProfileName)) {
+                        IPS_DeleteVariableProfile($presetProfileName);
                     }
+                    $this->RegisterProfileInteger($presetProfileName, 'Bulb', '', '', 0, 0, 0);
+                    foreach ($expose['presets'] as $preset) {
+                        $presetValue = $preset['value'];
+                        $presetName = $this->Translate(ucwords(str_replace('_', ' ', $preset['name'])));
+                        IPS_SetVariableProfileAssociation($presetProfileName, $presetValue, $presetName, '', 0xFFFFFF);
+                    }
+                }
 
-                    return ['mainProfile' => $fullRangeProfileName, 'presetProfile' => $presetProfileName];
-                default:
-                    $this->SendDebug(__FUNCTION__ . ':: Type not handled', $ProfileName, 0);
-                    return false;
+                return ['mainProfile' => $fullRangeProfileName, 'presetProfile' => $presetProfileName];
+            default:
+                $this->SendDebug(__FUNCTION__ . ':: Type not handled', $ProfileName, 0);
+                return false;
         }
     }
 
