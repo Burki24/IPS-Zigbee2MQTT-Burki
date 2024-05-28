@@ -11,6 +11,39 @@ trait Zigbee2MQTTHelper
         $variableID = $this->GetIDForIdent($Ident);
         $variableType = IPS_GetVariable($variableID)['VariableType'];
         switch ($Ident) {
+            case 'Z2M_PHMax':
+                $Payload['ph_max'] = $Value;
+                break;
+            case 'Z2M_PHMin':
+                $Payload['ph_min'] = $Value;
+                break;
+            case 'Z2M_ECMax':
+                $Payload['ec_max'] = $Value;
+                break;
+            case 'Z2M_ECMin':
+                $Payload['ec_min'] = $Value;
+                break;
+            case 'Z2M_ORPMax':
+                $Payload['orp_max'] = $Value;
+                break;
+            case 'Z2M_ORPMin':
+                $Payload['orp_min'] = $Value;
+                break;
+            case 'Z2M_FreeChlorineMax':
+                $Payload['free_chlorine_max'] = $Value;
+                break;
+            case 'Z2M_FreeChlorineMin':
+                $Payload['free_chlorine_min'] = $Value;
+                break;
+            case 'Z2M_Feed':
+                $Payload['feed'] = strval($Value);
+                break;
+            case 'Z2M_ServingSize':
+                $Payload['serving_size'] = $Value;
+                break;
+            case 'Z2M_PortionWeight':
+                $Payload['portion_weight'] = $Value;
+                break;
             case 'Z2M_OccupancySensitivity':
                 $Payload['occupancy_sensitivity'] = $Value;
                 break;
@@ -829,6 +862,74 @@ trait Zigbee2MQTTHelper
                     $this->RegisterVariableInteger('Z2M_LastSeen', $this->Translate('Last Seen'), '~UnixTimestamp');
                     $this->SetValue('Z2M_LastSeen', ($Payload['last_seen'] / 1000));
                 }
+                if (array_key_exists('ph', $Payload)) {
+                    $this->SetValue('Z2M_PH', $Payload['ph']);
+                }
+                if (array_key_exists('tds', $Payload)) {
+                    $this->SetValue('Z2M_TDS', $Payload['tds']);
+                }
+                if (array_key_exists('ec', $Payload)) {
+                    $this->SetValue('Z2M_EC', $Payload['ec']);
+                }
+                if (array_key_exists('orp', $Payload)) {
+                    $this->SetValue('Z2M_ORP', $Payload['orp']);
+                }
+                if (array_key_exists('free_chlorine', $Payload)) {
+                    $this->SetValue('Z2M_FreeChlorine', $Payload['free_chlorine']);
+                }
+                if (array_key_exists('ph_max', $Payload)) {
+                    $this->SetValue('Z2M_PHMax', $Payload['ph_max']);
+                }
+                if (array_key_exists('ph_min', $Payload)) {
+                    $this->SetValue('Z2M_PHMin', $Payload['ph_min']);
+                }
+                if (array_key_exists('ec_max', $Payload)) {
+                    $this->SetValue('Z2M_ECMax', $Payload['ec_max']);
+                }
+                if (array_key_exists('ec_min', $Payload)) {
+                    $this->SetValue('Z2M_ECMin', $Payload['ec_min']);
+                }
+                if (array_key_exists('orp_max', $Payload)) {
+                    $this->SetValue('Z2M_ORPMax', $Payload['orp_max']);
+                }
+                if (array_key_exists('orp_min', $Payload)) {
+                    $this->SetValue('Z2M_ORPMin', $Payload['orp_min']);
+                }
+                if (array_key_exists('free_chlorine_max', $Payload)) {
+                    $this->SetValue('Z2M_FreeChlorineMax', $Payload['free_chlorine_max']);
+                }
+                if (array_key_exists('free_chlorine_min', $Payload)) {
+                    $this->SetValue('Z2M_FreeChlorineMin', $Payload['free_chlorine_min']);
+                }
+                if (array_key_exists('salinity', $Payload)) {
+                    $this->SetValue('Z2M_Salinity', $Payload['salinity']);
+                }
+                if (array_key_exists('feed', $Payload)) {
+                    $this->SetValue('Z2M_Feed', $Payload['feed']);
+                }
+                if (array_key_exists('feeding_source', $Payload)) {
+                    $this->SetValue('Z2M_FeedingSource', $Payload['feeding_source']);
+                }
+                if (array_key_exists('feeding_size', $Payload)) {
+                    $this->SetValue('Z2M_FeedingSize', $Payload['feeding_size']);
+                }
+                if (array_key_exists('portions_per_day', $Payload)) {
+                    $this->SetValue('Z2M_PortionsPerDay', $Payload['portions_per_day']);
+                }
+
+                if (array_key_exists('weight_per_day', $Payload)) {
+                    $this->SetValue('Z2M_WeightPerDay', $Payload['weight_per_day']);
+                }
+                if (array_key_exists('serving_size', $Payload)) {
+                    $this->SetValue('Z2M_ServingSize', $Payload['serving_size']);
+                }
+                if (array_key_exists('portion_weight', $Payload)) {
+                    $this->SetValue('Z2M_PortionWeight', $Payload['portion_weight']);
+                }
+                if (array_key_exists('portions_per_day', $Payload)) {
+                    $this->SetValue('Z2M_PortionsPerDay', $Payload['portions_per_day']);
+                }
+
                 if (array_key_exists('execute_if_off', $Payload)) {
                     $this->handleStateChange('execute_if_off', 'Z2M_ExecuteIfOff', 'Execute If Off', $Payload);
                 }
@@ -2427,6 +2528,30 @@ trait Zigbee2MQTTHelper
                     $ProfileName .= '.';
                     $ProfileName .= dechex(crc32($tmpProfileName));
                     switch ($ProfileName) {
+                        case 'Z2M.identify.12619917':
+                            if (!IPS_VariableProfileExists($ProfileName)) {
+                                $this->RegisterProfileStringEx($ProfileName, 'Identify', '', '', [
+                                    ['Identify', $this->Translate('Identify'), '', 0x00FF00],
+                                ]);
+                            }
+                            break;
+                        case 'Z2M.feeding_source.00000000':
+                            if (!IPS_VariableProfileExists($ProfileName)) {
+                                $this->RegisterProfileStringEx($ProfileName, 'Feeding Source', '', '', [
+                                    ['schadule', $this->Translate('Schedule'), '', 0x00FF00],
+                                    ['manual', $this->Translate('Manual'), '', 0x00FF00],
+                                    ['remote', $this->Translate('Remote'), '', 0x00FF00],
+                                ]);
+                            }
+                            break;
+                        case 'Z2M.feed.00000000':
+                            if (!IPS_VariableProfileExists($ProfileName)) {
+                                $this->RegisterProfileStringEx($ProfileName, 'Feed', '', '', [
+                                    [' ', ' ', '', 0x00FF00],
+                                    ['START', $this->Translate('Start'), '', 0x00FF00],
+                                ]);
+                            }
+                            break;
                         case 'Z2M.occupancy_sensitivity.b8421401':
                             if (!IPS_VariableProfileExists($ProfileName)) {
                                 $this->RegisterProfileStringEx($ProfileName, 'Intensity', '', '', [
@@ -4005,6 +4130,74 @@ trait Zigbee2MQTTHelper
                 break;
             case 'numeric':
                 switch ($expose['property']) {
+                    case 'tds':
+                        if (!IPS_VariableProfileExists($ProfileName)) {
+                            $this->RegisterProfileFloat($ProfileName, 'Information', '', ' ' . $expose['unit'], 0, 0, 0, 2);
+                        }
+                        break;
+                    case 'ph':
+                        if (!IPS_VariableProfileExists($ProfileName)) {
+                            $this->RegisterProfileFloat($ProfileName, 'Information', '', ' ' . $expose['unit'], 0, 0, 0, 2);
+                        }
+                        break;
+                    case 'ec':
+                        if (!IPS_VariableProfileExists($ProfileName)) {
+                            $this->RegisterProfileFloat($ProfileName, 'Information', '', ' ' . $expose['unit'], 0, 0, 0, 2);
+                        }
+                        break;
+                    case 'orp':
+                        if (!IPS_VariableProfileExists($ProfileName)) {
+                            $this->RegisterProfileFloat($ProfileName, 'Information', '', ' ' . $expose['unit'], 0, 0, 0, 2);
+                        }
+                        break;
+                    case 'free_chlorine':
+                        if (!IPS_VariableProfileExists($ProfileName)) {
+                            $this->RegisterProfileFloat($ProfileName, 'Information', '', ' ' . $expose['unit'], 0, 0, 0, 2);
+                        }
+                        break;
+                    case 'salinity':
+                        if (!IPS_VariableProfileExists($ProfileName)) {
+                            $this->RegisterProfileFloat($ProfileName, 'Information', '', ' ' . $expose['unit'], 0, 0, 0, 2);
+                        }
+                        break;
+                    case 'voc_index':
+                        if (!IPS_VariableProfileExists($ProfileName)) {
+                            $this->RegisterProfileFloat($ProfileName, 'Information', '', ' ', 0, 0, 0, 2);
+                        }
+                        break;
+                    case 'ph_max':
+                    case 'ph_min':
+                        $ProfileName = $expose['value_min'] . '_' . $expose['value_max'];
+                        if (!IPS_VariableProfileExists($ProfileName)) {
+                            $this->RegisterProfileInteger($ProfileName, 'Information', '', ' ' . $expose['unit'], $expose['value_min'], $expose['value_max'], 1, 0);
+                        }
+                        break;
+                    case 'ec_max':
+                    case 'ec_min':
+                        $ProfileName = $expose['value_min'] . '_' . $expose['value_max'];
+                        if (!IPS_VariableProfileExists($ProfileName)) {
+                            $this->RegisterProfileInteger($ProfileName, 'Information', '', ' ' . $expose['unit'], $expose['value_min'], $expose['value_max'], 1, 0);
+                        }
+                        break;
+                    case 'orp_max':
+                    case 'orp_min':
+                        $ProfileName = $expose['value_min'] . '_' . $expose['value_max'];
+                        if (!IPS_VariableProfileExists($ProfileName)) {
+                            $this->RegisterProfileInteger($ProfileName, 'Information', '', ' ' . $expose['unit'], $expose['value_min'], $expose['value_max'], 1, 0);
+                        }
+                        break;
+                    case 'free_chlorine_max':
+                    case 'free_chlorine_min':
+                        $ProfileName = $expose['value_min'] . '_' . $expose['value_max'];
+                        if (!IPS_VariableProfileExists($ProfileName)) {
+                            $this->RegisterProfileInteger($ProfileName, 'Information', '', ' ' . $expose['unit'], $expose['value_min'], $expose['value_max'], 1, 0);
+                        }
+                        break;
+                    case 'salinity':
+                        if (!IPS_VariableProfileExists($ProfileName)) {
+                            $this->RegisterProfileFloat($ProfileName, 'Information', '', ' ' . $expose['unit'], 0, 0, 0, 2);
+                        }
+                        break;
                     case 'voc_index':
                         if (!IPS_VariableProfileExists($ProfileName)) {
                             $this->RegisterProfileFloat($ProfileName, 'Information', '', ' ', 0, 0, 0, 2);
@@ -5345,6 +5538,26 @@ trait Zigbee2MQTTHelper
                     break; //binary break
                 case 'enum':
                     switch ($expose['property']) {
+                        case 'identify':
+                            $ProfileName = $this->registerVariableProfile($expose);
+                            if ($ProfileName != false) {
+                                $this->RegisterVariableString('Z2M_Identify', $this->Translate('Identify'), $ProfileName);
+                                $this->EnableAction('Z2M_Identify');
+                            }
+                            break;
+                        case 'feeding_source':
+                            $ProfileName = $this->registerVariableProfile($expose);
+                            if ($ProfileName != false) {
+                                $this->RegisterVariableString('Z2M_FeedingSource', $this->Translate('Feeding Source'), $ProfileName);
+                            }
+                            break;
+                        case 'feed':
+                            $ProfileName = $this->registerVariableProfile($expose);
+                            if ($ProfileName != false) {
+                                $this->RegisterVariableString('Z2M_Feed', $this->Translate('Feed'), $ProfileName);
+                                $this->EnableAction('Z2M_Feed');
+                            }
+                            break;
                         case 'occupancy_sensitivity':
                             $ProfileName = $this->registerVariableProfile($expose);
                             if ($ProfileName != false) {
@@ -5849,6 +6062,131 @@ trait Zigbee2MQTTHelper
                     break; //enum break
                 case 'numeric':
                     switch ($expose['property']) {
+                        case 'tds':
+                            $ProfileName = $this->registerVariableProfile($expose);
+                            if ($ProfileName != false) {
+                                $this->RegisterVariableFloat('Z2M_TDS', $this->Translate('Total Dissolved Solids'), $ProfileName);
+                            }
+                            break;
+                        case 'ph':
+                            $ProfileName = $this->registerVariableProfile($expose);
+                            if ($ProfileName != false) {
+                                $this->RegisterVariableFloat('Z2M_PH', $this->Translate('pH'), $ProfileName);
+                            }
+                            break;
+                        case 'ec':
+                            $ProfileName = $this->registerVariableProfile($expose);
+                            if ($ProfileName != false) {
+                                $this->RegisterVariableFloat('Z2M_EC', $this->Translate('Electrical Conductivity'), $ProfileName);
+                            }
+                            break;
+                        case 'orp':
+                            $ProfileName = $this->registerVariableProfile($expose);
+                            if ($ProfileName != false) {
+                                $this->RegisterVariableFloat('Z2M_ORP', $this->Translate('Oxidation Reduction Potential'), $ProfileName);
+                            }
+                            break;
+                        case 'free_chlorine':
+                            $ProfileName = $this->registerVariableProfile($expose);
+                            if ($ProfileName != false) {
+                                $this->RegisterVariableFloat('Z2M_FreeChlorine', $this->Translate('Free Chlorine'), $ProfileName);
+                            }
+                            break;
+                        case 'salinity':
+                            $ProfileName = $this->registerVariableProfile($expose);
+                            if ($ProfileName != false) {
+                                $this->RegisterVariableFloat('Z2M_Salinity', $this->Translate('Salinity'), $ProfileName);
+                            }
+                            break;
+                        case 'ph_max':
+                            $ProfileName = $this->registerVariableProfile($expose);
+                            if ($ProfileName != false) {
+                                $this->RegisterVariableInteger('Z2M_PHMax', $this->Translate('pH Max'), $ProfileName);
+                                $this->EnableAction('Z2M_PHMax');
+                            }
+                            break;
+                        case 'ph_min':
+                            $ProfileName = $this->registerVariableProfile($expose);
+                            if ($ProfileName != false) {
+                                $this->RegisterVariableInteger('Z2M_PHMin', $this->Translate('pH Min'), $ProfileName);
+                                $this->EnableAction('Z2M_PHMin');
+                            }
+                            break;
+                        case 'ec_max':
+                            $ProfileName = $this->registerVariableProfile($expose);
+                            if ($ProfileName != false) {
+                                $this->RegisterVariableInteger('Z2M_ECMax', $this->Translate('Electrical Conductivity Max'), $ProfileName);
+                                $this->EnableAction('Z2M_ECMax');
+                            }
+                            break;
+                        case 'ec_min':
+                            $ProfileName = $this->registerVariableProfile($expose);
+                            if ($ProfileName != false) {
+                                $this->RegisterVariableInteger('Z2M_ECMin', $this->Translate('Electrical Conductivity Min'), $ProfileName);
+                                $this->EnableAction('Z2M_ECMin');
+                            }
+                            break;
+                        case 'orp_max':
+                            $ProfileName = $this->registerVariableProfile($expose);
+                            if ($ProfileName != false) {
+                                $this->RegisterVariableInteger('Z2M_ORPMax', $this->Translate('Oxidation Reduction Potential Max'), $ProfileName);
+                                $this->EnableAction('Z2M_ORPMax');
+                            }
+                            break;
+                        case 'orp_min':
+                            $ProfileName = $this->registerVariableProfile($expose);
+                            if ($ProfileName != false) {
+                                $this->RegisterVariableInteger('Z2M_ORPMin', $this->Translate('Oxidation Reduction Potential Min'), $ProfileName);
+                                $this->EnableAction('Z2M_ORPMin');
+                            }
+                            break;
+                        case 'free_chlorine_max':
+                            $ProfileName = $this->registerVariableProfile($expose);
+                            if ($ProfileName != false) {
+                                $this->RegisterVariableInteger('Z2M_FreeChlorineMax', $this->Translate('Free Chlorine Max'), $ProfileName);
+                                $this->EnableAction('Z2M_FreeChlorineMax');
+                            }
+                            break;
+                        case 'free_chlorine_min':
+                            $ProfileName = $this->registerVariableProfile($expose);
+                            if ($ProfileName != false) {
+                                $this->RegisterVariableInteger('Z2M_FreeChlorineMin', $this->Translate('Free Chlorine Min'), $ProfileName);
+                                $this->EnableAction('Z2M_FreeChlorineMin');
+                            }
+                            break;
+                        case 'portions_per_day':
+                            $ProfileName = $this->registerVariableProfile($expose);
+                            if ($ProfileName != false) {
+                                $this->RegisterVariableInteger('Z2M_PortionsPerDay', $this->Translate('Portions Per Day'), $ProfileName);
+                            }
+                            break;
+                        case 'weight_per_day':
+                            $ProfileName = $this->registerVariableProfile($expose);
+                            if ($ProfileName != false) {
+                                $this->RegisterVariableInteger('Z2M_WeightPerDay', $this->Translate('Weight Per Day'), $ProfileName);
+                            }
+                            break;
+                        case 'serving_size':
+                            $ProfileName = $this->registerVariableProfile($expose);
+                            if ($ProfileName != false) {
+                                $this->RegisterVariableInteger('Z2M_ServingSize', $this->Translate('Serving Size'), $ProfileName);
+                                $this->EnableAction('Z2M_ServingSize');
+                            }
+                            break;
+                        case 'portion_weight':
+                            $ProfileName = $this->registerVariableProfile($expose);
+                            if ($ProfileName != false) {
+                                $this->RegisterVariableInteger('Z2M_PortionWeight', $this->Translate('Portion Weight'), $ProfileName);
+                                $this->EnableAction('Z2M_PortionWeight');
+                            }
+                            break;
+                        case 'feeding_size':
+                            $ProfileName = $this->registerVariableProfile($expose);
+                            if ($ProfileName != false) {
+                                $this->RegisterVariableInteger('Z2M_FeedingSize', $this->Translate('Feeding Size'), $ProfileName);
+                                $this->EnableAction('Z2M_FeedingSize');
+                            }
+                            break;
                         case 'voc_index':
                             $ProfileName = $this->registerVariableProfile($expose);
                             if ($ProfileName != false) {
