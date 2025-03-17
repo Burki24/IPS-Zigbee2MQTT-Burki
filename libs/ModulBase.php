@@ -361,6 +361,13 @@ abstract class ModulBase extends \IPSModule
         ]
     ];
 
+    /**
+     * @var array
+     * Speichert benutzerdefinierte ON/OFF-Werte für Binary-Variablen
+     * Format: ['property' => ['on' => 'VALUE_ON', 'off' => 'VALUE_OFF']]
+     */
+    private $binaryValueMappings = [];
+
     // Kernfunktionen
 
     /**
@@ -1890,6 +1897,12 @@ abstract class ModulBase extends \IPSModule
         if ($ident === 'child_lock' && is_bool($value)) {
             $value = $value ? 'LOCK' : 'UNLOCK';
         }
+        // Prüfe auf benutzerdefinierte Binary-Werte
+        elseif (is_bool($value) && isset($this->binaryValueMappings[$ident])) {
+            $mapping = $this->binaryValueMappings[$ident];
+            $value = $value ? $mapping['on'] : $mapping['off'];
+            $this->SendDebug(__FUNCTION__, "Verwende benutzerdefinierte Binary-Werte für $ident: " . json_encode($value), 0);
+        }
         // Standard: Konvertiere andere boolesche Werte zu ON/OFF
         elseif (is_bool($value)) {
             $value = $value ? 'ON' : 'OFF';
@@ -2231,7 +2244,19 @@ abstract class ModulBase extends \IPSModule
                     $this->SendDebug(__FUNCTION__, 'Wert ist bereits bool: ' . json_encode($value), 0);
                     return $value;
                 }
-                if (is_string($value)) {
+                if (is_string($value) || is_numeric($value)) {
+                    // Prüfe auf benutzerdefinierte Binary-Werte
+                    if (isset($this->binaryValueMappings[$ident])) {
+                        $mapping = $this->binaryValueMappings[$ident];
+                        if ($value == $mapping['on']) {
+                            $this->SendDebug(__FUNCTION__, "Binary-Wert '{$value}' entspricht '{$mapping['on']}', konvertiere zu true", 0);
+                            return true;
+                        } elseif ($value == $mapping['off']) {
+                            $this->SendDebug(__FUNCTION__, "Binary-Wert '{$value}' entspricht '{$mapping['off']}', konvertiere zu false", 0);
+                            return false;
+                        }
+                    }
+
                     // Spezialbehandlung für child_lock
                     if ($ident === 'child_lock') {
                         if (strtoupper($value) === 'LOCK') {
@@ -2754,6 +2779,12 @@ abstract class ModulBase extends \IPSModule
                 ) {
                     return '~Switch';
                 } else {
+                    // Speichern der benutzerdefinierten Werte für spätere Verwendung
+                    $this->binaryValueMappings[$property] = [
+                        'on' => $valueOn,
+                        'off' => $valueOff
+                    ];
+                    $this->SendDebug(__FUNCTION__, "Binary value mapping für $property: ON=$valueOn, OFF=$valueOff", 0);
                     return $this->registerStringProfile($ProfileName, (string) $valueOn, (string) $valueOff);
                 }
             }
