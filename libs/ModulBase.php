@@ -261,6 +261,7 @@ abstract class ModulBase extends \IPSModule
         ['group_type' => '', 'feature' => 'window_detection', 'profile' => '~Window', 'variableType' => VARIABLETYPE_BOOLEAN],
         ['group_type' => '', 'feature' => 'contact', 'profile' => '~Window.Reversed', 'variableType' => VARIABLETYPE_BOOLEAN],
         ['group_type' => '', 'feature' => 'tamper', 'profile' => '~Alert', 'variableType' => VARIABLETYPE_BOOLEAN],
+        ['group_type' => '', 'feature' => 'smoke', 'profile' => '~Alert', 'variableType' => VARIABLETYPE_BOOLEAN],
         ['group_type' => 'light', 'feature' => 'color', 'profile' => '~HexColor', 'variableType' => VARIABLETYPE_INTEGER],
         ['group_type' => 'climate', 'feature' => 'occupied_heating_setpoint', 'profile' => '~Temperature.Room', 'variableType' => VARIABLETYPE_FLOAT]
     ];
@@ -1593,7 +1594,11 @@ abstract class ModulBase extends \IPSModule
 
         // Payload-Daten verarbeiten
         foreach ($flattenedPayload as $key => $value) {
-            $this->SendDebug(__FUNCTION__, sprintf('Verarbeite: Key=%s, Value=%s', $key, is_array($value) ? json_encode($value) : (string) $value), 0);
+            if ($value === null) {
+                $this->SendDebug(__FUNCTION__, sprintf('Skip empty value for key=%s', $key), 0);
+                continue;
+            }
+            $this->SendDebug(__FUNCTION__, sprintf('Verarbeite: Key=%s, Value=%s', $key, is_array($value) ? json_encode($value) : (is_bool($value) ? ($value ? 'TRUE' : 'FALSE') : (string) $value)), 0);
 
             if (!$this->processSpecialVariable($key, $value)) {
                 $this->processVariable($key, $value);
@@ -1886,12 +1891,25 @@ abstract class ModulBase extends \IPSModule
             return false;
         }
 
-        // Spezialfall child_lock: Konvertiere zu LOCK/UNLOCK
-        if ($ident === 'child_lock' && is_bool($value)) {
-            $value = $value ? 'LOCK' : 'UNLOCK';
-        }
-        // Standard: Konvertiere andere boolesche Werte zu ON/OFF
-        elseif (is_bool($value)) {
+        // Bei Boolean-Werten prüfen, ob es ein spezielles Mapping gibt
+        if (is_bool($value)) {
+            $exposes = $this->ReadAttributeArray(self::ATTRIBUTE_EXPOSES);
+            foreach ($exposes as $expose) {
+                $features = isset($expose['features']) ? $expose['features'] : [$expose];
+                foreach ($features as $feature) {
+                    if (isset($feature['property']) && $feature['property'] === $ident &&
+                        isset($feature['value_on']) && isset($feature['value_off']) &&
+                        $feature['type'] === 'binary') {
+
+                        // Benutzerdefinierte Werte verwenden
+                        $value = $value ? $feature['value_on'] : $feature['value_off'];
+                        $payload = [$ident => $value];
+                        return $this->SendSetCommand($payload);
+                    }
+                }
+            }
+
+            // Fallback auf Standard ON/OFF
             $value = $value ? 'ON' : 'OFF';
         }
 
@@ -2232,26 +2250,34 @@ abstract class ModulBase extends \IPSModule
                     return $value;
                 }
                 if (is_string($value)) {
-                    // Spezialbehandlung für child_lock
-                    if ($ident === 'child_lock') {
-                        if (strtoupper($value) === 'LOCK') {
-                            $this->SendDebug(__FUNCTION__, 'Konvertiere "LOCK" zu true', 0);
-                            return true;
-                        } elseif (strtoupper($value) === 'UNLOCK') {
-                            $this->SendDebug(__FUNCTION__, 'Konvertiere "UNLOCK" zu false', 0);
-                            return false;
+                    // Exposes-Daten für diesen Identifier abrufen
+                    $exposes = $this->ReadAttributeArray(self::ATTRIBUTE_EXPOSES);
+                    foreach ($exposes as $expose) {
+                        // Features durchsuchen
+                        $features = isset($expose['features']) ? $expose['features'] : [$expose];
+                        foreach ($features as $feature) {
+                            if (isset($feature['property']) && $feature['property'] === $ident &&
+                                isset($feature['value_on']) && isset($feature['value_off']) &&
+                                $feature['type'] === 'binary') {
+
+                                // Prüfen ob der Wert dem value_on entspricht
+                                if ($value == $feature['value_on']) {
+                                    return true;
+                                }
+                                // Prüfen ob der Wert dem value_off entspricht
+                                elseif ($value == $feature['value_off']) {
+                                    return false;
+                                }
+                            }
                         }
                     }
-                    // Standard ON/OFF Konvertierung
+                    // Standard ON/OFF Prüfung als Fallback
                     if (strtoupper($value) === 'ON') {
-                        $this->SendDebug(__FUNCTION__, 'Konvertiere "ON" zu true', 0);
                         return true;
                     } elseif (strtoupper($value) === 'OFF') {
-                        $this->SendDebug(__FUNCTION__, 'Konvertiere "OFF" zu false', 0);
                         return false;
                     }
                 }
-                $this->SendDebug(__FUNCTION__, 'Konvertiere zu bool: ' . json_encode((bool) $value), 0);
                 return (bool) $value;
             case 1:
                 $this->SendDebug(__FUNCTION__, 'Konvertiere zu int: ' . (int) $value, 0);
@@ -2709,7 +2735,6 @@ abstract class ModulBase extends \IPSModule
      *
      *
      * @see \Zigbee2MQTT\ModulBase::registerStateMappingProfile()
-     * @see \Zigbee2MQTT\ModulBase::registerStringProfile()
      * @see \Zigbee2MQTT\ModulBase::getStandardProfile()
      * @see \Zigbee2MQTT\ModulBase::isValidStandardProfile()
      * @see \Zigbee2MQTT\ModulBase::handleProfileType()
@@ -2754,7 +2779,23 @@ abstract class ModulBase extends \IPSModule
                 ) {
                     return '~Switch';
                 } else {
-                    return $this->registerStringProfile($ProfileName, (string) $valueOn, (string) $valueOff);
+                    // Erstelle Profilwerte für boolean-Variable
+                    $profileValues = [
+                        [false, $this->convertLabelToName($valueOff), '', 0xFF0000],  // Rot für Aus (false)
+                        [true, $this->convertLabelToName($valueOn), '', 0x00FF00]     // Grün für An (true)
+                    ];
+
+                    // Registriere das Boolean-Profil direkt
+                    $this->RegisterProfileBooleanEx(
+                        $ProfileName,
+                        'Power',  // Icon
+                        '',       // Prefix
+                        '',       // Suffix
+                        $profileValues
+                    );
+
+                    $this->SendDebug(__FUNCTION__, 'Custom Boolean-Profil erstellt: ' . $ProfileName . ' mit Werten: ' . json_encode($profileValues), 0);
+                    return $ProfileName;
                 }
             }
             return '~Switch';
@@ -3235,44 +3276,6 @@ abstract class ModulBase extends \IPSModule
         }
 
         return ['mainProfile' => $fullRangeProfileName, 'presetProfile' => $presetProfileName];
-    }
-
-    /**
-     * registerStringProfile
-     *
-     * Erstellt ein benutzerdefiniertes Stringprofil für Variablen.
-     *
-     * Diese Methode erstellt ein Profil für String-Variablen mit benutzerdefinierten Wertenfür On/Off
-     *
-     * @param string $ProfileName Der eindeutige Name für das zu erstellende Profil (z.B. 'Z2M.CustomString')
-     * @param string $valueOn
-     * @param string $valueOff
-     *
-     * @return string Der Name des erstellten Profils
-     *
-     * @see \Zigbee2MQTT\ModulBase::RegisterProfileStringEx()
-     * @see \IPSModule::SendDebug()
-     * @see json_encode()
-     */
-    private function registerStringProfile(string $ProfileName, string $valueOn, string $valueOff): string
-    {
-        // Erstelle Profilwerte
-        $profileValues = [
-            [$valueOff, $this->convertLabelToName($valueOff),'', 0xFF0000],  // Rot für Aus
-            [$valueOn, $this->convertLabelToName($valueOff) ,'', 0x00FF00]     // Grün für An
-        ];
-
-        // Registriere das Profil
-        $this->RegisterProfileStringEx(
-            $ProfileName,
-            'Power',  // Icon
-            '',       // Prefix
-            '',       // Suffix
-            $profileValues
-        );
-
-        $this->SendDebug(__FUNCTION__, 'Custom String-Profil erstellt: ' . $ProfileName . ' mit Werten: ' . json_encode($profileValues), 0);
-        return $ProfileName;
     }
 
     /**
